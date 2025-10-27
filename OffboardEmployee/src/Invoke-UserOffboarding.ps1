@@ -54,7 +54,7 @@ param(
 
   # Execution control
   [switch]$Apply,                             # do changes only when present
-  [string]$TenantHint,                        # optional tenant id or verified domain for Graph
+  [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',                        # optional tenant id or verified domain for Graph
   [switch]$UseElevatedGraphScopes,            # adds Directory.ReadWrite.All
   [string]$OutputFolder = (Join-Path $env:USERPROFILE ("Desktop\Offboarding-" + (Get-Date -Format "yyyyMMdd-HHmmss")))
 )
@@ -88,6 +88,7 @@ function Ensure-ModuleLoaded {
   Import-Module $Name -ErrorAction Stop
 }
 
+# Need to pass
 function Ensure-EXO {
   Ensure-ModuleLoaded -Name ExchangeOnlineManagement -MinVersion ([Version]'3.3.0')
   if (-not (Get-ConnectionInformation)) {
