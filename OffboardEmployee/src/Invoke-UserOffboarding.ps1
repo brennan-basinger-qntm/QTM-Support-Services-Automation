@@ -160,54 +160,70 @@ try {
   $User = Resolve-GraphUser -Identity $UserUpn
 } catch { Stop-Transcript | Out-Null; throw }
 
+
+
 # ---------- snapshot helpers ----------
 function Snapshot-GraphGroups {
   param([string]$UserId)
   $out = @()
-  $memberOf = Get-MgUserMemberOf -UserId $UserId -All
-  foreach ($obj in $memberOf) {
-    if ($obj.'@odata.type' -eq '#microsoft.graph.group') {
-      $g = Get-MgGroup -GroupId $obj.Id -Property "id,displayName,groupTypes,securityEnabled,mail,mailEnabled,membershipRule,membershipRuleProcessingState" -ErrorAction SilentlyContinue
-      if ($g) {
-        $isDynamic = -not [string]::IsNullOrEmpty($g.membershipRule)
-        $isUnified = ($g.GroupTypes -contains 'Unified')
+
+  # Direct group memberships only
+  # If we ever want transitive groups included, we can switch to Get-MgUserTransitiveMemberOfAsGroup -All.
+  $groups = Get-MgUserMemberOfAsGroup -UserId $UserId -All -ErrorAction SilentlyContinue
+
+  foreach ($g in $groups) {
+    try {
+      # Pull properties needed to detect dynamic groups & categorize the type
+      $gg = Get-MgGroup -GroupId $g.Id -Property "id,displayName,groupTypes,securityEnabled,mail,mailEnabled,membershipRule,membershipRuleProcessingState" -ErrorAction SilentlyContinue
+      if ($gg) {
+        $isDynamic = -not [string]::IsNullOrEmpty($gg.membershipRule) -or ($gg.groupTypes -contains 'DynamicMembership')
+        $isUnified = ($gg.groupTypes -contains 'Unified')
         $out += [pscustomobject]@{
-          GroupId       = $g.Id
-          DisplayName   = $g.DisplayName
-          Mail          = $g.Mail
-          MailEnabled   = [bool]$g.MailEnabled
-          IsSecurity    = [bool]$g.SecurityEnabled
-          IsUnified     = $isUnified
-          IsDynamic     = $isDynamic
+          GroupId     = $gg.Id
+          DisplayName = $gg.DisplayName
+          Mail        = $gg.Mail
+          MailEnabled = [bool]$gg.MailEnabled
+          IsSecurity  = [bool]$gg.SecurityEnabled
+          IsUnified   = $isUnified
+          IsDynamic   = $isDynamic
         }
       }
+    } catch {
+      Skip "Failed to read group $($g.Id): $_"
     }
   }
   return $out | Sort-Object DisplayName
 }
 
+
+
 function Snapshot-GraphOwnedGroups {
   param([string]$UserId)
   $out = @()
   try {
-    $owned = Get-MgUserOwnedObject -UserId $UserId -All -ErrorAction SilentlyContinue
-    foreach ($obj in $owned) {
-      if ($obj.'@odata.type' -eq '#microsoft.graph.group') {
-        $g = Get-MgGroup -GroupId $obj.Id -Property "id,displayName,groupTypes,securityEnabled,mail,mailEnabled,membershipRule" -ErrorAction SilentlyContinue
-        if ($g) {
-          $owners = Get-MgGroupOwner -GroupId $g.Id -All | ForEach-Object { $_.Id }
+    $ownedGroups = Get-MgUserOwnedObjectAsGroup -UserId $UserId -All -ErrorAction SilentlyContinue
+    foreach ($g in $ownedGroups) {
+      try {
+        # Basic properties for display/categorization
+        $gg = Get-MgGroup -GroupId $g.Id -Property "id,displayName,groupTypes" -ErrorAction SilentlyContinue
+        if ($gg) {
+          # Count owners (works for M365/security groups but not for classic Exchange DLs)
+          $owners = Get-MgGroupOwner -GroupId $gg.Id -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Id }
           $out += [pscustomobject]@{
-            GroupId     = $g.Id
-            DisplayName = $g.DisplayName
+            GroupId     = $gg.Id
+            DisplayName = $gg.DisplayName
             OwnersCount = @($owners).Count
-            IsUnified   = ($g.GroupTypes -contains 'Unified')
+            IsUnified   = ($gg.GroupTypes -contains 'Unified')
           }
         }
+      } catch {
+        Skip "Failed to resolve owned group $($g.Id): $_"
       }
     }
   } catch { }
   return $out
 }
+
 
 
 function Snapshot-EXO-DLs {
