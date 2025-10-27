@@ -44,8 +44,8 @@ param(
   [switch]$RemoveFromDistributionLists = $true,
   [switch]$RemoveFromGroups          = $true,
   [switch]$RemoveMailboxDelegations  = $true,
-  [switch]$RemoveLicenses,
-  [switch]$DisableEntraSignIn,
+  [switch]$RemoveLicenses = $true,
+  [switch]$DisableEntraSignIn = $true,
 
   # Active Directory (on‑prem) — optional. If not available, we skip.
   [switch]$DisableAD,
