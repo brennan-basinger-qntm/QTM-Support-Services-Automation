@@ -88,14 +88,20 @@ function Ensure-ModuleLoaded {
   Import-Module $Name -ErrorAction Stop
 }
 
-# Need to pass
+# Now passing organization via Tenant ID to Graph
 function Ensure-EXO {
   Ensure-ModuleLoaded -Name ExchangeOnlineManagement -MinVersion ([Version]'3.3.0')
   if (-not (Get-ConnectionInformation)) {
     Act "Connecting to Exchange Online..."
-    Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null
+    $isDomain = ($TenantHint -and ($TenantHint -match '^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'))
+    if ($isDomain) {
+      Connect-ExchangeOnline -ShowBanner:$false -Organization $TenantHint -ErrorAction Stop | Out-Null
+    } else {
+      Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null
+    }
   }
 }
+
 
 function Ensure-Graph {
   param([string[]]$Scopes)
