@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SOP – Offboarding Toolkit: Environment Setup</title>
+<style>
+ body{font-family:Arial,Helvetica,sans-serif;line-height:1.5;margin:24px;max-width:900px}
+ code,pre{background:#f5f5f5;padding:2px 4px;border-radius:4px}
+ h1,h2,h3{margin-top:1.2em}
+ .callout{background:#eef7ff;border-left:4px solid #3b82f6;padding:12px 16px;border-radius:4px}
+ .cmd{background:#111;color:#eee;padding:10px 12px;border-radius:6px;white-space:pre-wrap}
+</style>
+</head>
+<body>
+<h1>SOP – Environment Setup (PowerShell 7 x64)</h1>
+<p>Here’s how I want us to set up our machines so this toolkit behaves the same for everyone.</p>
+
+<h2>1) Use PowerShell 7 (x64)</h2>
+<p><strong>x64</strong> means 64‑bit. That’s the one that loads Exchange Online and AD/RSAT modules properly.
+<strong>x86</strong> means 32‑bit and will break a lot of admin modules. We don’t use it.</p>
+<div class="cmd">[Environment]::Is64BitProcess   # should say True</div>
+<div class="cmd">$PSVersionTable.PSVersion      # should be 7.4 or higher</div>
+
+<h2>2) Install PowerShell 7 (x64) if you don’t already have it</h2>
+<div class="cmd">winget install --id Microsoft.PowerShell --source winget</div>
+<p>Launch “PowerShell 7 (x64)” from Start. If you see <em>x86</em> anywhere, close it and use the 64‑bit one.</p>
+
+<h2>3) Download the toolkit</h2>
+<p>Unzip the repo somewhere simple, e.g. <code>C:\Tools\offboarding-toolkit</code>.</p>
+
+<h2>4) Standardize your environment</h2>
+<p>In PowerShell 7 (x64), run the bootstrap script once:</p>
+<div class="cmd">cd C:\Tools\offboarding-toolkit\src
+pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\Bootstrap-Env.ps1</div>
+<p>This verifies your version and installs/loads two modules:</p>
+<ul>
+<li><strong>ExchangeOnlineManagement</strong> – the Exchange cmdlets we use</li>
+<li><strong>Microsoft.Graph</strong> – Graph cmdlets for groups, users, and licenses</li>
+</ul>
+
+<h2>5) Which account we sign in with</h2>
+<p>Use your <strong>privileged account</strong> for admin work. The script has <code>-AdminUpn</code> so Exchange connects as the right user.
+Graph will warn if you’re connected as the wrong account.</p>
+
+<h2>6) Permissions explained in plain English</h2>
+<ul>
+<li><strong>Graph scopes</strong> (these are permissions for the Graph app): we request
+<code>User.ReadWrite.All</code>, <code>Group.ReadWrite.All</code>, <code>GroupMember.ReadWrite.All</code>, and <code>Directory.Read.All</code> by default.
+Add <code>-UseElevatedGraphScopes</code> if we need <code>Directory.ReadWrite.All</code> too.</li>
+<li><strong>Exchange Online</strong> uses role-based access control (RBAC), not “scopes.” A role group that includes
+<strong>Recipient Management</strong> covers what we do here.</li>
+</ul>
+
+<h2>7) Sanity checks</h2>
+<p>After you connect to Graph, you can see what account and scopes you actually got:</p>
+<div class="cmd">Get-MgContext | Select-Object Account, TenantId, Scopes</div>
+<p>To see your Exchange roles:</p>
+<div class="cmd">Get-ManagementRoleAssignment -RoleAssignee "&lt;your UPN&gt;" | Select-Object Role, RoleAssigneeName</div>
+
+<div class="callout">
+<strong>Bottom line:</strong> PowerShell 7 (x64), run the bootstrap, use your privileged UPN for admin work, and you’ll be fine.
+</div>
+</body>
+</html>

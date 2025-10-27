@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SOP – Offboarding Toolkit: How We Run Offboarding Tickets</title>
+<style>
+ body{font-family:Arial,Helvetica,sans-serif;line-height:1.55;margin:24px;max-width:900px}
+ code,pre{background:#f5f5f5;padding:2px 4px;border-radius:4px}
+ h1,h2,h3{margin-top:1.2em}
+ .cmd{background:#111;color:#eee;padding:10px 12px;border-radius:6px;white-space:pre-wrap}
+ .checklist li{margin:6px 0}
+ .callout{background:#fffbe6;border-left:4px solid #f59e0b;padding:12px 16px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>SOP – How We Run Offboarding Tickets</h1>
+<p>This is our day‑to‑day playbook. It’s written to be easy to follow, even if you don’t live in PowerShell.</p>
+
+<h2>What the tool does for us</h2>
+<ul class="checklist">
+<li>Takes a <strong>Before</strong> snapshot of the account (groups, DLs, mailbox delegations, licenses, AD groups).</li>
+<li>Builds a <strong>Plan</strong> that shows exactly what we’re about to do.</li>
+<li>When we say go (<code>-Apply</code>), it makes the changes.</li>
+<li>Takes an <strong>After</strong> snapshot.</li>
+<li>Generates <strong>ServiceNow work notes</strong> that we can paste straight into the ticket.</li>
+</ul>
+
+<div class="callout">
+<strong>Dynamic groups:</strong> We never remove dynamic memberships (because the system calculates them). We still show them in the snapshots so owners see where the user showed up.
+</div>
+
+<h2>Step 1 – Preview</h2>
+<p>Always run a preview first. No changes are made in preview mode (that’s the default).</p>
+<div class="cmd">cd C:\Tools\offboarding-toolkit\src
+.\Invoke-UserOffboarding.ps1 -UserUpn "user.to.offboard@quantinuum.com" -TicketNumber "INC12345678"</div>
+<p>Open the timestamped folder on your Desktop. Review:</p>
+<ul>
+<li><code>Snapshot-Before.json</code> + the CSVs</li>
+<li><code>Plan-WhatWeWillDo.md</code></li>
+<li><code>WorkNotes-ServiceNow.txt</code> (you can paste this now if you’re gathering approvals)</li>
+</ul>
+
+<h2>Step 2 – Apply (when you’re ready)</h2>
+<p>Once the plan looks right, re-run with <code>-Apply</code> and any options you need:</p>
+<div class="cmd">.\Invoke-UserOffboarding.ps1 `
+  -UserUpn "user.to.offboard@quantinuum.com" `
+  -TicketNumber "INC12345678" -AnalystName "Support Services" `
+  -AdminUpn "your-privileged@quantinuum.com" `
+  -SupervisorUpn "manager@quantinuum.com" -GrantSupervisorFullAccess -GrantSupervisorSendAs `
+  -RemoveFromDistributionLists -RemoveMailboxDelegations -RemoveFromGroups `
+  -BackupOwnerUpn "backup.owner@quantinuum.com" `
+  -RemoveLicenses -DisableEntraSignIn `
+  -DisableAD -DisabledOuDn "OU=Disabled Users,OU=Corp,DC=yourco,DC=com" -UpdateAdDescription `
+  -ADRemoteServer "CO49SVUTIL" `
+  -UseElevatedGraphScopes `
+  -Apply</div>
+
+<h3>What actually happens on Apply</h3>
+<ul>
+<li>Mailbox is converted to <strong>Shared</strong> (unless you opt out) and stamped with a <strong>6‑month expiry marker</strong> in CustomAttribute15.</li>
+<li>Supervisor gets access if you asked for it.</li>
+<li>User is removed from <strong>static</strong> Exchange DLs and <strong>static</strong> M365/Security groups.</li>
+<li>If they were the only owner, we add your <code>-BackupOwnerUpn</code> as owner.</li>
+<li>Optionally remove licenses and disable sign‑in.</li>
+<li>AD changes run locally if RSAT is installed, or remotely on CO49SVUTIL if you passed <code>-ADRemoteServer</code>.</li>
+</ul>
+
+<h2>Step 3 – Close out the ServiceNow ticket</h2>
+<p>Paste <code>WorkNotes-ServiceNow.txt</code> into Work Notes and attach:</p>
+<ul>
+<li><code>Snapshot-Before.json</code></li>
+<li><code>Snapshot-After.json</code></li>
+<li>Any CSVs that are relevant (DLs, groups, etc.)</li>
+</ul>
+
+<h2>Common variations</h2>
+<ul>
+<li><strong>Only grant FullAccess (no SendAs):</strong> drop <code>-GrantSupervisorSendAs</code>.</li>
+<li><strong>Leave licenses in place for now:</strong> omit <code>-RemoveLicenses</code> and run it later.</li>
+<li><strong>Skip mailbox conversion:</strong> add <code>-ConvertMailboxToShared:$false</code>.</li>
+<li><strong>No RSAT on your laptop:</strong> add <code>-ADRemoteServer "CO49SVUTIL"</code> (and <code>-ADCredential</code> if needed).</li>
+</ul>
+
+<h2>Troubleshooting</h2>
+<ul>
+<li><strong>“Run this in PowerShell 7 (x64)”</strong> — you launched the 32‑bit shell. Close it and open PowerShell 7 (x64).</li>
+<li><strong>Graph asks for consent</strong> — approve the scopes or ask an admin to pre‑consent them.</li>
+<li><strong>Exchange cmdlet denied</strong> — you probably need a role that includes Recipient Management.</li>
+<li><strong>Mailbox not found</strong> — the script keeps going and calls it out; confirm the UPN and whether the user had a mailbox.</li>
+</ul>
+</body>
+</html>
