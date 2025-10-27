@@ -591,7 +591,7 @@ if ($After.AD) { $After.AD | Export-Csv -Path (Join-Path $OutputFolder 'After-AD
 function Summ($label,$before,$after) {
   $b = ($before | Measure-Object).Count
   $a = ($after  | Measure-Object).Count
-  return "$label: $b → $a"
+  return "${label}: $b → $a"
 }
 
 $notesPath = Join-Path $OutputFolder ('ServiceNow-WorkNotes.txt')
