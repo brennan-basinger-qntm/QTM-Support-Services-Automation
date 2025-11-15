@@ -32,10 +32,10 @@
 # [Block] Define source/target and behavior flags.
 
 # Define the SOURCE user whose access/memberships you want to COPY FROM.
-$Source  = 'benjamin.spaun@quantinuum.com'
+$Source  = 'first.last@quantinuum.com'
 
 # Define the TARGET user who should RECEIVE the same access/memberships.
-$Target  = 'thomas.wilkason@quantinuum.com'
+$Target  = 'first.last@quantinuum.com'
 
 # Start in PREVIEW mode (no changes). Set to $false to APPLY.
 $Preview = $true
