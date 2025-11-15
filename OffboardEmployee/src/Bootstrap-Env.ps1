@@ -8,7 +8,7 @@ the right admin modules.
 
 What it does
 ------------
-• Confirms we are in PowerShell 7 (x64) and at least version 7.4.0.
+• Confirms we are in PowerShell 7 (x64) and at least version 7.5.4.
 • Trusts the PowerShell Gallery (for installs) if needed.
 • Installs/loads: ExchangeOnlineManagement and Microsoft.Graph (minimum versions).
 ================================================================================================ #>
@@ -23,8 +23,8 @@ function Fail([string]$m){ throw $m }
 if (-not [Environment]::Is64BitProcess) {
   Fail "You are running a 32‑bit PowerShell host. Please start 'PowerShell 7 (x64)'."
 }
-if ($PSVersionTable.PSVersion.Major -lt 7 -or $PSVersionTable.PSVersion -lt [version]'7.4.0') {
-  Fail "PowerShell 7.4+ required. Winget: winget install --id Microsoft.PowerShell"
+if ($PSVersionTable.PSVersion.Major -lt 7 -or $PSVersionTable.PSVersion -lt [version]'7.5.4') {
+  Fail "PowerShell 7.5.4+ required. Winget: winget install --id Microsoft.PowerShell"
 }
 
 # Trust PSGallery if needed
