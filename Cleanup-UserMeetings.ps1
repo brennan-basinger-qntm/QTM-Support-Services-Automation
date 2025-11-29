@@ -90,6 +90,10 @@ try {
     if ($PreviewOnly) {
         $params["PreviewOnly"] = $true
     }
+	
+	if ($PSBoundParameters.ContainsKey('Verbose')) {
+		$params['Verbose'] = $true
+	}
 
     $result = Remove-CalendarEvents @params
 
