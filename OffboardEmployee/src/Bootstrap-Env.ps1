@@ -40,7 +40,7 @@ try {
 
 # Install modules
 $mods = @(
-  @{ Name='ExchangeOnlineManagement'; Min='3.3.0' },
+  @{ Name='ExchangeOnlineManagement'; Min='3.7.2' },
   @{ Name='Microsoft.Graph';         Min='2.16.0' }
 )
 foreach ($m in $mods) {

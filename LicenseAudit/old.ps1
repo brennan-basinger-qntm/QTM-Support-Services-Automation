@@ -1,7 +1,9 @@
-# License Audit
+# E3 and Defender License Audit
 
-$E3SkuId = "05e9a617-0261-4cee-bb44-138d3ef5d965"                 # E3
-$DefenderBundleSkuId = "3dd6cf57-d688-4eed-ba52-9e40b5468c3e"      # Defender
+Connect-MgGraph -Scopes "User.Read.All","Directory.Read.All"
+
+$E3SkuId = "05e9a617-0261-4cee-bb44-138d3ef5d965"                 	# E3
+$DefenderBundleSkuId = "3dd6cf57-d688-4eed-ba52-9e40b5468c3e"      	# Defender
 
 $allUsers = Get-MgUser -All -Property "id,displayName,mail,userPrincipalName,assignedLicenses"
 
