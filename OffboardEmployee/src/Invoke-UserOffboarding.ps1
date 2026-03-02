@@ -62,7 +62,8 @@ param(
   [switch]$Apply,                          # do changes only when present
   [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
   [switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
-  [string]$OutputFolder = (Join-Path $env:USERPROFILE ("Desktop\Offboarding-" + (Get-Date -Format "yyyyMMdd-HHmmss")))
+  # Base folder where offboarding evidence will be stored
+  [string]$OutputFolder = 'C:\OffboardedEmployees'
 )
 
 Set-StrictMode -Version Latest
@@ -428,6 +429,8 @@ function Snapshot-Licenses {
   return As-Array $rows
 }
 
+
+<#
 function Snapshot-ADGroups {
   param([string]$SamAccountName)
   $out = @()
@@ -448,6 +451,42 @@ function Snapshot-ADGroups {
   }
   return $out
 }
+
+#>
+
+function Snapshot-ADGroups {
+  param(
+    [string]$SamAccountName,
+    [string]$Server
+  )
+  $out = @()
+  try {
+    $adUser = Get-ADUser -Identity $SamAccountName `
+                         -Server $Server `
+                         -Properties MemberOf,Description,Enabled,DistinguishedName -ErrorAction Stop
+
+    $out += [pscustomobject]@{
+      AD_Enabled     = $adUser.Enabled
+      AD_Description = $adUser.Description
+    }
+
+    foreach ($dn in $adUser.MemberOf) {
+      try {
+        $g = Get-ADGroup -Identity $dn -Server $Server -ErrorAction SilentlyContinue
+        if ($g) {
+          $out += [pscustomobject]@{
+            GroupName        = $g.Name
+            DistinguishedName = $g.DistinguishedName
+          }
+        }
+      } catch { }
+    }
+  } catch {
+    Skip "AD snapshot skipped (module not available or user not found)."
+  }
+  return $out
+}
+
 
 # ---------- BEFORE snapshot ----------
 Step "Snapshot BEFORE"
@@ -488,7 +527,7 @@ if ($DisableAD -or $UpdateAdDescription -or $DisabledOuDn) {
   $HaveAD = Ensure-ADLocal
   if ($HaveAD) {
     $sam = ($User.UserPrincipalName -split '@')[0]
-    $Before.AD = Snapshot-ADGroups -SamAccountName $sam
+    $Before.AD = Snapshot-ADGroups -SamAccountName $sam -Server $AdServer
   } else {
     Skip "AD module not available locally — AD steps will be skipped."
   }
@@ -664,23 +703,29 @@ if ($Preview) {
   if ($HaveAD -and ($DisableAD -or $UpdateAdDescription -or $DisabledOuDn)) {
     try {
       $sam = ($User.UserPrincipalName -split '@')[0]
-      $adUser = Get-ADUser -Identity $sam -Properties Enabled,Description,DistinguishedName -ErrorAction Stop
+      
+      
+      
+      $adUser = Get-ADUser -Identity $sam -Server $AdServer -Properties Enabled,Description,DistinguishedName -ErrorAction Stop
       if ($DisableAD -and $adUser.Enabled) {
         Act "Disabling AD account"
-        Disable-ADAccount -Identity $adUser.SamAccountName
+        Disable-ADAccount -Identity $adUser.SamAccountName -Server $AdServer
         Did "AD account disabled"
       }
       if ($UpdateAdDescription) {
         $desc = ("Offboarded {0}; Ticket {1}" -f (Get-Date -Format 'yyyy-MM-dd'), $TicketNumber)
         Act ("Updating AD description to '{0}'" -f $desc)
-        Set-ADUser -Identity $adUser.SamAccountName -Description $desc
+        Set-ADUser -Identity $adUser.SamAccountName -Description $desc -Server $AdServer
         Did "AD description updated"
       }
       if ($DisabledOuDn) {
         Act ("Moving user to Disabled OU: {0}" -f $DisabledOuDn)
-        Move-ADObject -Identity $adUser.DistinguishedName -TargetPath $DisabledOuDn
+        Move-ADObject -Identity $adUser.DistinguishedName -TargetPath $DisabledOuDn -Server $AdServer
         Did ("Moved AD object to '{0}'" -f $DisabledOuDn)
       }
+
+
+
     } catch { Skip ("AD actions failed: {0}" -f $_) }
   }
 }
@@ -711,7 +756,7 @@ $After.Graph.Groups    = Snapshot-GraphGroups     -UserId   $User.Id
 $After.Licenses        = Snapshot-Licenses        -UserId   $User.Id
 if ($HaveAD) {
   $sam = ($User.UserPrincipalName -split '@')[0]
-  $After.AD = Snapshot-ADGroups -SamAccountName $sam
+  $After.AD = Snapshot-ADGroups -SamAccountName $sam -Server $AdServer
 }
 
 # Normalize to arrays for safe export
