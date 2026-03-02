@@ -50,7 +50,13 @@ param(
   # Active Directory (on-prem) — optional. If not available, we skip.
   [switch]$DisableAD,
   [switch]$UpdateAdDescription,
-  [string]$DisabledOuDn,  # e.g. "OU=Disabled,OU=Corp,DC=contoso,DC=com"
+
+  [string]$DisabledOuDn = "OU=Disabled Users,OU=Corp,DC=quantinuum,DC=com",
+
+  # Default AD server (DC) to use for all AD calls
+  [string]$AdServer = "CO49SVDC2.quantinuum.com",
+
+
 
   # Execution control
   [switch]$Apply,                          # do changes only when present
