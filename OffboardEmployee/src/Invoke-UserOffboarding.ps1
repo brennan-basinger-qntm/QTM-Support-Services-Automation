@@ -62,8 +62,9 @@ param(
   [switch]$Apply,                          # do changes only when present
   [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
   [switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
+  [string]$OutputFolder = (Join-Path $env:USERPROFILE ("Desktop\Offboarding-" + (Get-Date -Format "yyyyMMdd-HHmmss")))
   # Base folder where offboarding evidence will be stored
-  [string]$OutputFolder = 'C:\OffboardedEmployees'
+  #[string]$OutputFolder = 'C:\OffboardedEmployees'
 )
 
 Set-StrictMode -Version Latest
