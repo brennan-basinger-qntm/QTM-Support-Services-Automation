@@ -164,23 +164,12 @@ function Ensure-EXO {
     Act "Connecting to Exchange Online..."
     $isDomain = ($TenantHint -and ($TenantHint -match '^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'))
 
-
-    # 3) Try DisableWAM (EXO 3.7.2+)
-    try {
-      if ($isDomain) { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false} #Connect-ExchangeOnline -UserPrincipalName $UserUpn -Organization $TenantHint -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false} #Connect-ExchangeOnline -UserPrincipalName $UserUpn -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      return
-    } catch {
-      throw ("Failed to connect to Exchange Online after all fallbacks: {0}" -f $_)
-    }
-
     # 1) Try normal WAM sign-in
     try {
       if ($isDomain) { Connect-ExchangeOnline -ShowBanner:$false -Organization $TenantHint -ErrorAction Stop | Out-Null }
       else           { Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null }
       return
     } catch { Skip ("WAM sign-in failed, retrying with Device Code: {0}" -f $_) }
-
 
     # 2) Fallback to Device Code (bypasses WAM entirely)
     try {
@@ -189,14 +178,16 @@ function Ensure-EXO {
       return
     } catch { Skip ("Device Code also failed, trying DisableWAM if supported: {0}" -f $_) }
 
-
-
-
-
-
+    # 3) Try DisableWAM (EXO 3.7.2+)
+    try {
+      if ($isDomain) { Connect-ExchangeOnline -Organization $TenantHint -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
+      else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
+      return
+    } catch {
+      throw ("Failed to connect to Exchange Online after all fallbacks: {0}" -f $_)
+    }
   }
 }
-
 function Ensure-Graph {
   param([string[]]$Scopes)
   Ensure-ModuleLoaded -Name Microsoft.Graph -MinVersion ([Version]'2.16.0')
@@ -788,7 +779,6 @@ $a_dynDL    = @($After.EXO.DLs  | Where-Object { $_ -and (Has-Prop $_ 'IsDynamic
 
 $b_graph    = $Before.Graph.Groups
 $a_graph    = $After.Graph.Groups
-$a_graphDyn = CountOf (@($a_graph | Where-Object { $_ -and (Has-Prop $_ 'IsDynamic') -and $_.IsDynamic }))
 
 $b_deleg    = $Before.EXO.Delegations
 $a_deleg    = $After.EXO.Delegations
@@ -807,7 +797,7 @@ Analyst: $env:USERNAME
 Mode: $(if($Preview){"Preview (no changes)"}else{"Applied"})
 
 Summary at a glance
-- $(Summ "EXO DLs (static)" $b_staticDL $a_staticDL)  | dynamic listed: $a_graphDyn
+- $(Summ "EXO DLs (static)" $b_staticDL $a_staticDL)  | dynamic listed: $(CountOf $a_dynDL)
 - $(Summ "Graph groups (all)" $b_graph $a_graph)
 - $(Summ "Mailbox delegations" $b_deleg $a_deleg)
 - $(Summ "Assigned licenses" $b_lic $a_lic)
