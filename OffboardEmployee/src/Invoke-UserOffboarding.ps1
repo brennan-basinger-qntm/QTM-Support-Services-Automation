@@ -70,6 +70,8 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+# AD module availability flag (default false). This prevents StrictMode failures when AD actions are not requested.
+$HaveAD = $false
 
 # ---------- helpers ----------
 function Say([string]$msg){ Write-Host $msg }
@@ -674,6 +676,8 @@ $UpdateAdDescription -or
 
 if ($AdActionsRequested) {
   $HaveAD = Ensure-ADLocal
+} else {
+  $HaveAD = $false
 }
 
 # Write BEFORE snapshots
