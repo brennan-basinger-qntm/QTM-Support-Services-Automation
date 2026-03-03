@@ -2,72 +2,70 @@
 Invoke-UserOffboarding.ps1
 ------------------------------------------------------------------------------------
 Offboarding runbook automation for Microsoft 365/Entra ID using:
-  • Exchange Online PowerShell (EXO)
-  • Microsoft Graph PowerShell (Mg)
+• Exchange Online PowerShell (EXO)
+• Microsoft Graph PowerShell (Mg)
 
-SAFE BY DEFAULT — the script runs in Preview unless you pass -Apply
+SAFE BY DEFAULT - the script runs in Preview unless you pass -Apply
 It captures BEFORE / AFTER snapshots and writes paste-ready ServiceNow work notes
 
 USAGE (Preview)
-  .\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC00001234"
+.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC00001234"
 
 USAGE (Apply)
-  .\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC00001234" -Apply
+.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC00001234" -Apply
 
 NOTES
-  • Distribution lists (DGs) & mail-enabled security groups are removed via EXO.
-  • Microsoft 365/Security groups are removed via Graph.
-  • Dynamic groups are detected and **never** changed (we only list them).
-  • Mailbox is converted to Shared by default and stamped with a future expiry 
-    marker in CustomAttribute15 (e.g., "Expires: 2026-04-21 (180d)").
-  • AD/on-prem steps are optional and skipped unless you request them AND the AD 
-    module is available.
+• Distribution lists (DGs) & mail-enabled security groups are removed via EXO.
+• Microsoft 365/Security groups are removed via Graph.
+• Dynamic groups are detected and **never** changed (we only list them).
+• Mailbox is converted to Shared by default and stamped with a future expiry
+marker in CustomAttribute15 (e.g., "Expires: 2026-04-21 (180d)").
+• AD/on-prem steps are optional and skipped unless you request them AND the AD
+module is available.
 ==================================================================================== #>
 
 [CmdletBinding()]
 param(
-  # Core
-  [Parameter(Mandatory=$true)][string]$UserUpn,
-  [Parameter(Mandatory=$true)][string]$TicketNumber,
+# Core
+[Parameter(Mandatory=$true)][string]$UserUpn,
+[Parameter(Mandatory=$true)][string]$TicketNumber,
 
-  # Mailbox handling
-  [switch]$ConvertMailboxToShared = $true,
-  [int]$SharedMailboxExpiryDays = 180,
+# Mailbox handling
+[switch]$ConvertMailboxToShared = $true,
+[int]$SharedMailboxExpiryDays = 180,
 
-  # Supervisor / manager options
-  [string]$SupervisorUpn,
-  [string]$BackupOwnerUpn,
-  [switch]$GrantSupervisorFullAccess,
-  [switch]$GrantSupervisorSendAs,
+# Supervisor / manager options
+[string]$SupervisorUpn,
+[string]$BackupOwnerUpn,
+[switch]$GrantSupervisorFullAccess,
+[switch]$GrantSupervisorSendAs,
 
-  # Group & license cleanup
-  [switch]$RemoveFromDistributionLists = $true,
-  [switch]$RemoveFromGroups          = $true,
-  [switch]$RemoveMailboxDelegations  = $true,
+# Group & license cleanup
+[switch]$RemoveFromDistributionLists = $true,
+[switch]$RemoveFromGroups          = $true,
+[switch]$RemoveMailboxDelegations  = $true,
 
-  [switch]$RemoveLicenses = $true,
-  [switch]$DisableEntraSignIn = $true,
+[switch]$RemoveLicenses = $true,
+[switch]$DisableEntraSignIn = $true,
 
-  # Mailbox access cleanup (user has access to other mailboxes)
-  [switch]$RemoveUserAccessToOtherMailboxes = $true,
-  [switch]$ScanSharedMailboxesOnly = $true,
+# Mailbox access cleanup (user has access to other mailboxes)
+[switch]$RemoveUserAccessToOtherMailboxes = $true,
+[switch]$ScanSharedMailboxesOnly = $true,
 
-  # Active Directory (on-prem) — optional. If not available, we skip.
-  [switch]$DisableAD,
-  [switch]$UpdateAdDescription,
+# Active Directory (on-prem) - optional. If not available, we skip.
+[switch]$DisableAD,
+[switch]$UpdateAdDescription,
 
-  [string]$DisabledOuDn = "OU=Disabled Users,OU=Corp,DC=quantinuum,DC=com",
+[string]$DisabledOuDn = "OU=Disabled Users,OU=Corp,DC=quantinuum,DC=com",
 
-  # Default AD server (DC) to use for all AD calls
-  [string]$AdServer = "CO49SVDC2.quantinuum.com",
+# Default AD server (DC) to use for all AD calls
+[string]$AdServer = "CO49SVDC2.quantinuum.com",
 
-
-
-  # Execution control
-  [switch]$Apply,                          # do changes only when present
-  [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
-  [switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
-  [string]$OutputFolder
+# Execution control
+[switch]$Apply,                          # do changes only when present
+[string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
+[switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
+[string]$OutputFolder
 )
 
 Set-StrictMode -Version Latest
@@ -92,7 +90,7 @@ function Get-CompactNameFromIdentity {
 
   $name = ($parts | ForEach-Object {
     if ($_.Length -gt 1) { $_.Substring(0,1).ToUpperInvariant() + $_.Substring(1).ToLowerInvariant() }
-    else { $_.ToUpperInvariant() }
+  else { $_.ToUpperInvariant() }
   }) -join ''
 
   if ([string]::IsNullOrWhiteSpace($name)) { return 'UnknownUser' }
@@ -127,10 +125,10 @@ function Has-Prop {
 
 function Write-CsvSafe {
   param(
-    [AllowNull()] $Data,
-    [Parameter(Mandatory)][string]$Path,
-    $Headers,
-    [switch]$Append
+  [AllowNull()] $Data,
+  [Parameter(Mandatory)][string]$Path,
+  $Headers,
+  [switch]$Append
   )
   $count = CountOf $Data
   if ($count -gt 0) {
@@ -177,7 +175,7 @@ function Ensure-ModuleLoaded {
   try {
     Act ("Installing module {0} (min {1})" -f $Name, $MinVersion)
     try { Install-Module $Name -Force -Scope AllUsers -MinimumVersion $MinVersion -ErrorAction Stop }
-    catch { Install-Module $Name -Force -Scope CurrentUser -MinimumVersion $MinVersion -ErrorAction Stop }
+  catch { Install-Module $Name -Force -Scope CurrentUser -MinimumVersion $MinVersion -ErrorAction Stop }
     Import-Module $Name -ErrorAction Stop
   } catch {
     Skip ("Could not install {0}. Using any locally available version if present. Error: {1}" -f $Name, $_)
@@ -196,21 +194,21 @@ function Ensure-EXO {
     # 1) Try normal WAM sign-in
     try {
       if ($isDomain) { Connect-ExchangeOnline -ShowBanner:$false -Organization $TenantHint -ErrorAction Stop | Out-Null }
-      else           { Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null }
+    else           { Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null }
       return
     } catch { Skip ("WAM sign-in failed, retrying with Device Code: {0}" -f $_) }
 
     # 2) Fallback to Device Code (bypasses WAM entirely)
     try {
-      if ($isDomain) { Connect-ExchangeOnline -UserPrincipalName $UserUpn -Organization $TenantHint -Device -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      else           { Connect-ExchangeOnline -UserPrincipalName $UserUpn -Device -ShowBanner:$false -ErrorAction Stop | Out-Null }
+      if ($isDomain) { Connect-ExchangeOnline -Organization $TenantHint -Device -ShowBanner:$false -ErrorAction Stop | Out-Null }
+    else           { Connect-ExchangeOnline -Device -ShowBanner:$false -ErrorAction Stop | Out-Null }
       return
     } catch { Skip ("Device Code also failed, trying DisableWAM if supported: {0}" -f $_) }
 
     # 3) Try DisableWAM (EXO 3.7.2+)
     try {
       if ($isDomain) { Connect-ExchangeOnline -Organization $TenantHint -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
+    else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
       return
     } catch {
       throw ("Failed to connect to Exchange Online after all fallbacks: {0}" -f $_)
@@ -261,9 +259,12 @@ function Resolve-GraphUser {
 }
 
 # ---------- connect services ----------
-$graphScopes = @('User.ReadWrite.All','Group.ReadWrite.All','GroupMember.ReadWrite.All','Directory.Read.All','AuditLog.Read.All')
-if ($UseElevatedGraphScopes) { $graphScopes += 'Directory.ReadWrite.All' }
-
+if ($Preview) {
+  $graphScopes = @('User.Read.All','Group.Read.All','Directory.Read.All','AuditLog.Read.All')
+} else {
+  $graphScopes = @('User.ReadWrite.All','Group.ReadWrite.All','GroupMember.ReadWrite.All','Directory.Read.All','AuditLog.Read.All')
+}
+if ($UseElevatedGraphScopes -and -not $Preview) { $graphScopes += 'Directory.ReadWrite.All' }
 try { Ensure-Graph -Scopes $graphScopes } catch {
   Skip ("Failed to connect to Microsoft Graph: {0}" -f $_)
   Stop-Transcript | Out-Null
@@ -288,97 +289,97 @@ try { $User = Resolve-GraphUser -Identity $UserUpn } catch {
 }
 
 function Snapshot-UserAccessToOtherMailboxes {
-    param(
-        [Parameter(Mandatory=$true)][string]$UserSmtp,
-        [switch]$SharedOnly
-    )
+  param(
+  [Parameter(Mandatory=$true)][string]$UserSmtp,
+  [switch]$SharedOnly
+  )
 
-    $out = @()
+  $out = @()
 
-    # Choose what mailbox types to scan
-    $mailboxes = @()
+  # Choose what mailbox types to scan
+  $mailboxes = @()
+  try {
+    if ($SharedOnly) {
+      $mailboxes = Get-EXOMailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited -ErrorAction Stop
+    } else {
+      $mailboxes = Get-EXOMailbox -ResultSize Unlimited -ErrorAction Stop
+    }
+  } catch {
+    Skip ("Unable to enumerate mailboxes for access scan: {0}" -f $_)
+    return @()
+  }
+
+  foreach ($mbxItem in $mailboxes) {
     try {
-        if ($SharedOnly) {
-            $mailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited -ErrorAction Stop
-        } else {
-            $mailboxes = Get-Mailbox -ResultSize Unlimited -ErrorAction Stop
+      if (-not $mbxItem.PrimarySmtpAddress) { continue }
+
+      # Skip the user's own mailbox if it shows up in the list
+      if ($mbxItem.PrimarySmtpAddress.ToString() -ieq $UserSmtp) {
+        continue
+      }
+
+      $mbxId = $mbxItem.Identity
+      $mbxSmtp = $mbxItem.PrimarySmtpAddress.ToString()
+
+      # FullAccess
+      try {
+        $fa = Get-MailboxPermission -Identity $mbxId -User $UserSmtp -ErrorAction SilentlyContinue |
+        Where-Object { -not $_.IsInherited -and -not $_.Deny -and $_.AccessRights -contains 'FullAccess' }
+
+        if ($fa) {
+          $out += [pscustomobject]@{
+            Mailbox = $mbxSmtp
+            MailboxIdentity = $mbxId
+            Right = 'FullAccess'
+            Trustee = $UserSmtp
+          }
         }
-    } catch {
-        Skip ("Unable to enumerate mailboxes for access scan: {0}" -f $_)
-        return @()
-    }
+      } catch {}
 
-    foreach ($mbxItem in $mailboxes) {
-        try {
-            if (-not $mbxItem.PrimarySmtpAddress) { continue }
+      # SendAs
+      try {
+        $sa = Get-RecipientPermission -Identity $mbxId -ErrorAction SilentlyContinue |
+        Where-Object { $_.Trustee -ieq $UserSmtp -and $_.AccessRights -contains 'SendAs' }
 
-            # Skip the user's own mailbox if it shows up in the list
-            if ($mbxItem.PrimarySmtpAddress.ToString() -ieq $UserSmtp) {
-                continue
+        if ($sa) {
+          $out += [pscustomobject]@{
+            Mailbox = $mbxSmtp
+            MailboxIdentity = $mbxId
+            Right = 'SendAs'
+            Trustee = $UserSmtp
+          }
+        }
+      } catch {}
+
+      # SendOnBehalf
+      try {
+        $sobList = (Get-EXOMailbox -Identity $mbxId -PropertySets All -ErrorAction SilentlyContinue).GrantSendOnBehalfTo
+        if ($sobList) {
+          $hit = $false
+          foreach ($t in $sobList) {
+            try {
+              if ($t -and $t.PrimarySmtpAddress -and ($t.PrimarySmtpAddress.ToString() -ieq $UserSmtp)) { $hit = $true }
+            elseif ($t -and ($t.ToString() -ieq $UserSmtp)) { $hit = $true }
+            } catch {}
+          }
+
+          if ($hit) {
+            $out += [pscustomobject]@{
+              Mailbox = $mbxSmtp
+              MailboxIdentity = $mbxId
+              Right = 'SendOnBehalf'
+              Trustee = $UserSmtp
             }
-
-            $mbxId = $mbxItem.Identity
-            $mbxSmtp = $mbxItem.PrimarySmtpAddress.ToString()
-
-            # FullAccess
-            try {
-                $fa = Get-MailboxPermission -Identity $mbxId -User $UserSmtp -ErrorAction SilentlyContinue |
-                    Where-Object { -not $_.IsInherited -and -not $_.Deny -and $_.AccessRights -contains 'FullAccess' }
-
-                if ($fa) {
-                    $out += [pscustomobject]@{
-                        Mailbox = $mbxSmtp
-                        MailboxIdentity = $mbxId
-                        Right = 'FullAccess'
-                        Trustee = $UserSmtp
-                    }
-                }
-            } catch {}
-
-            # SendAs
-            try {
-                $sa = Get-RecipientPermission -Identity $mbxId -ErrorAction SilentlyContinue |
-                    Where-Object { $_.Trustee -ieq $UserSmtp -and $_.AccessRights -contains 'SendAs' }
-
-                if ($sa) {
-                    $out += [pscustomobject]@{
-                        Mailbox = $mbxSmtp
-                        MailboxIdentity = $mbxId
-                        Right = 'SendAs'
-                        Trustee = $UserSmtp
-                    }
-                }
-            } catch {}
-
-            # SendOnBehalf
-            try {
-                $sobList = (Get-Mailbox -Identity $mbxId -Property GrantSendOnBehalfTo -ErrorAction SilentlyContinue).GrantSendOnBehalfTo
-                if ($sobList) {
-                    $hit = $false
-                    foreach ($t in $sobList) {
-                        try {
-                            if ($t -and $t.PrimarySmtpAddress -and ($t.PrimarySmtpAddress.ToString() -ieq $UserSmtp)) { $hit = $true }
-                            elseif ($t -and ($t.ToString() -ieq $UserSmtp)) { $hit = $true }
-                        } catch {}
-                    }
-
-                    if ($hit) {
-                        $out += [pscustomobject]@{
-                            Mailbox = $mbxSmtp
-                            MailboxIdentity = $mbxId
-                            Right = 'SendOnBehalf'
-                            Trustee = $UserSmtp
-                        }
-                    }
-                }
-            } catch {}
-
-        } catch {
-            Skip ("Mailbox access scan failed for mailbox: {0}. Error: {1}" -f $mbxItem.PrimarySmtpAddress, $_)
+          }
         }
-    }
+      } catch {}
 
-    return @($out | Sort-Object Mailbox, Right)
+    } catch {
+      Skip ("Mailbox access scan failed for mailbox: {0}. Error: {1}" -f $mbxItem.PrimarySmtpAddress, $_)
+    }
+  }
+
+  return @($out | Sort-Object Mailbox, Right)
 }
 
 # ---------- snapshot helpers ----------
@@ -474,10 +475,18 @@ function Snapshot-EXO-DLs {
           }
         }
       } else {
-        $dlMatches += [pscustomobject]@{
-          DisplayName = $dl.DisplayName
-          PrimarySmtp = $dl.PrimarySmtpAddress
-          IsDynamic   = $true
+        # Dynamic distribution group: include only if user is in calculated membership
+        try {
+          $ddgMembers = Get-DynamicDistributionGroupMember -Identity $dl.Identity -ResultSize Unlimited -ErrorAction Stop
+          if ($ddgMembers | Where-Object { $_.PrimarySmtpAddress -ieq $UserSmtp }) {
+            $dlMatches += [pscustomobject]@{
+              DisplayName = $dl.DisplayName
+              PrimarySmtp = $dl.PrimarySmtpAddress
+              IsDynamic   = $true
+            }
+          }
+        } catch {
+          Skip ("Dynamic DL membership check failed for {0}: {1}" -f $dl.DisplayName, $_)
         }
       }
     } catch { Skip ("DL scan failed for {0}: {1}" -f $dl.DisplayName, $_) }
@@ -492,19 +501,38 @@ function Snapshot-EXO-Delegations {
 
   try {
     $fa = Get-MailboxPermission -Identity $mbx.Identity -ErrorAction SilentlyContinue |
-          Where-Object { -not $_.IsInherited -and $_.User -notmatch 'NT AUTHORITY\\SELF' -and $_.AccessRights -contains 'FullAccess' }
+    Where-Object { -not $_.IsInherited -and $_.User -notmatch 'NT AUTHORITY\\SELF' -and $_.AccessRights -contains 'FullAccess' }
     foreach ($p in $fa) { $out += [pscustomobject]@{ Mailbox=$mbx.PrimarySmtpAddress; Right='FullAccess'; Trustee=$p.User } }
   } catch {}
 
   try {
     $sa = Get-RecipientPermission -Identity $mbx.Identity -ErrorAction SilentlyContinue |
-          Where-Object { -not $_.IsInherited -and $_.Trustee -ne 'NT AUTHORITY\SELF' -and $_.AccessRights -contains 'SendAs' }
+    Where-Object { -not $_.IsInherited -and $_.Trustee -ne 'NT AUTHORITY\SELF' -and $_.AccessRights -contains 'SendAs' }
     foreach ($p in $sa) { $out += [pscustomobject]@{ Mailbox=$mbx.PrimarySmtpAddress; Right='SendAs'; Trustee=$p.Trustee } }
   } catch {}
 
   try {
     $sob = (Get-Mailbox -Identity $mbx.Identity -Property GrantSendOnBehalfTo -ErrorAction SilentlyContinue).GrantSendOnBehalfTo
-    foreach ($t in $sob) { $out += [pscustomobject]@{ Mailbox=$mbx.PrimarySmtpAddress; Right='SendOnBehalf'; Trustee=$t.PrimarySmtpAddress } }
+    foreach ($t in $sob) {
+      if ($null -eq $t) { continue }
+
+      $trusteeValue = $null
+      if ($t -is [string]) {
+        $trusteeValue = $t
+      } elseif ($t.PSObject.Properties.Match('PrimarySmtpAddress').Count -gt 0 -and $t.PrimarySmtpAddress) {
+        $trusteeValue = $t.PrimarySmtpAddress.ToString()
+      } else {
+        $trusteeValue = $t.ToString()
+      }
+
+      if (-not [string]::IsNullOrWhiteSpace($trusteeValue)) {
+        $out += [pscustomobject]@{
+          Mailbox = $mbx.PrimarySmtpAddress
+          Right   = 'SendOnBehalf'
+          Trustee = $trusteeValue
+        }
+      }
+    }
   } catch {}
 
   if ((CountOf $out) -gt 0) { return $out | Sort-Object Mailbox, Right, Trustee } else { return @() }
@@ -542,7 +570,6 @@ function Snapshot-Licenses {
   return As-Array $rows
 }
 
-
 <#
 function Snapshot-ADGroups {
   param([string]$SamAccountName)
@@ -569,14 +596,19 @@ function Snapshot-ADGroups {
 
 function Snapshot-ADGroups {
   param(
-    [string]$SamAccountName,
-    [string]$Server
+  [string]$SamAccountName,
+  [string]$Server
   )
   $out = @()
   try {
-    $adUser = Get-ADUser -Identity $SamAccountName `
-                         -Server $Server `
-                         -Properties MemberOf,Description,Enabled,DistinguishedName -ErrorAction Stop
+    $adUser = $null
+    try {
+      $adUser = Get-ADUser -Filter "UserPrincipalName -eq '$($SamAccountName)'" -Server $Server -Properties MemberOf,Description,Enabled,DistinguishedName -ErrorAction Stop
+    } catch {}
+
+    if (-not $adUser) {
+      $adUser = Get-ADUser -Identity $SamAccountName -Server $Server -Properties MemberOf,Description,Enabled,DistinguishedName -ErrorAction Stop
+    }
 
     $out += [pscustomobject]@{
       AD_Enabled     = $adUser.Enabled
@@ -600,7 +632,6 @@ function Snapshot-ADGroups {
   return $out
 }
 
-
 # ---------- BEFORE snapshot ----------
 Step "Snapshot BEFORE"
 $Before = [ordered]@{
@@ -613,7 +644,7 @@ $Before = [ordered]@{
 
 # Check mailbox
 try {
-  $mbx = Get-Mailbox -Identity $UserUpn -ErrorAction Stop
+  $mbx = Get-EXOMailbox -Identity $UserUpn -ErrorAction Stop
   $Before.EXO.Mailbox = @{
     PrimarySmtp          = $mbx.PrimarySmtpAddress
     RecipientTypeDetails = $mbx.RecipientTypeDetails
@@ -636,16 +667,13 @@ $Before.EXO.UserAccessElsewhere = As-Array $Before.EXO.UserAccessElsewhere
 $Before.Graph.Groups    = As-Array $Before.Graph.Groups
 $Before.Licenses        = As-Array $Before.Licenses
 
-# Optional AD snapshot
-$HaveAD = $false
-if ($DisableAD -or $UpdateAdDescription -or $DisabledOuDn) {
+$AdActionsRequested =
+$DisableAD -or
+$UpdateAdDescription -or
+($PSBoundParameters.ContainsKey('DisabledOuDn') -and -not [string]::IsNullOrWhiteSpace($DisabledOuDn))
+
+if ($AdActionsRequested) {
   $HaveAD = Ensure-ADLocal
-  if ($HaveAD) {
-    $sam = ($User.UserPrincipalName -split '@')[0]
-    $Before.AD = Snapshot-ADGroups -SamAccountName $sam -Server $AdServer
-  } else {
-    Skip "AD module not available locally — AD steps will be skipped."
-  }
 }
 
 # Write BEFORE snapshots
@@ -661,6 +689,8 @@ $Plan = New-Object System.Collections.Generic.List[object]
 function Add-Plan { param([string]$Area,[string]$Action) $Plan.Add([pscustomobject]@{ Area=$Area; Action=$Action }) }
 
 $willConvert = $ConvertMailboxToShared -and $mbx -and $mbx.RecipientTypeDetails -notlike '*SharedMailbox*'
+$convertRequested = $ConvertMailboxToShared -and $mbx
+$alreadyShared = $mbx -and ($mbx.RecipientTypeDetails -like '*SharedMailbox*')
 if ($willConvert) { Add-Plan 'Mailbox'  ("Convert mailbox to Shared and stamp expiry +{0} days in CustomAttribute15" -f $SharedMailboxExpiryDays) }
 if ($SupervisorUpn) {
   if ($GrantSupervisorFullAccess) { Add-Plan 'Mailbox' ("Grant FullAccess to {0}" -f $SupervisorUpn) }
@@ -686,9 +716,8 @@ if ($RemoveMailboxDelegations -and $delegCount -gt 0) {
 
 $elsewhereCount = CountOf $Before.EXO.UserAccessElsewhere
 if ($RemoveUserAccessToOtherMailboxes -and $elsewhereCount -gt 0) {
-    Add-Plan 'Mailbox' ("Remove user access from {0} other mailbox permission entries" -f $elsewhereCount)
+  Add-Plan 'Mailbox' ("Remove user access from {0} other mailbox permission entries" -f $elsewhereCount)
 }
-
 
 if ((CountOf $Before.Licenses) -gt 0 -and $RemoveLicenses) { Add-Plan 'Licensing' "Remove all assigned licenses" }
 
@@ -708,7 +737,7 @@ foreach ($p in $Plan) { "- [$($p.Area)] $($p.Action)" | Out-File $planPath -Appe
 
 # ---------- APPLY ----------
 if ($Preview) {
-  Step "Preview mode — no changes will be made. Use -Apply to execute changes."
+  Step "Preview mode - no changes will be made. Use -Apply to execute changes."
 } else {
   Step "Applying changes"
 
@@ -722,7 +751,7 @@ if ($Preview) {
   }
 
   # Stamp expiry in CustomAttribute15
-  if ($mbx) {
+  if ($ConvertMailboxToShared -and $mbx) {
     try {
       $expiry = (Get-Date).AddDays([int]$SharedMailboxExpiryDays)
       $marker = ("Expires: {0:yyyy-MM-dd} ({1}d)" -f $expiry, $SharedMailboxExpiryDays)
@@ -766,9 +795,16 @@ if ($Preview) {
     foreach ($d in $Before.EXO.Delegations) {
       try {
         switch ($d.Right) {
-          'FullAccess'   { Remove-MailboxPermission   -Identity $d.Mailbox -User $UserUpn -AccessRights FullAccess -Confirm:$false }
-          'SendAs'       { Remove-RecipientPermission -Identity $d.Mailbox -Trustee $UserUpn -AccessRights SendAs -Confirm:$false }
-          'SendOnBehalf' { Set-Mailbox -Identity $d.Mailbox -GrantSendOnBehalfTo @{ Remove = $UserUpn } }
+          'FullAccess' {
+            Remove-MailboxPermission -Identity $d.Mailbox -User $d.Trustee -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction Stop
+          }
+          'SendAs' {
+            Remove-RecipientPermission -Identity $d.Mailbox -Trustee $d.Trustee -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+          }
+          'SendOnBehalf' {
+            Set-Mailbox -Identity $d.Mailbox -GrantSendOnBehalfTo @{ remove = $d.Trustee } -ErrorAction Stop
+          }
+
         }
         Did ("Removed mailbox delegation: {0} on {1}" -f $d.Right, $d.Mailbox)
       } catch { Skip ("Delegation removal failed for {0} [{1}]: {2}" -f $d.Mailbox, $d.Right, $_) }
@@ -776,32 +812,32 @@ if ($Preview) {
   }
 
   # Remove the offboarded user's access to other mailboxes
-if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewhere) -gt 0) {
+  if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewhere) -gt 0) {
     foreach ($row in $Before.EXO.UserAccessElsewhere) {
-        try {
-            switch ($row.Right) {
-                'FullAccess' {
-                    Act ("Removing FullAccess from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
-                    Remove-MailboxPermission -Identity $row.MailboxIdentity -User $UserUpn -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
-                }
-                'SendAs' {
-                    Act ("Removing SendAs from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
-                    Remove-RecipientPermission -Identity $row.MailboxIdentity -Trustee $UserUpn -AccessRights SendAs -Confirm:$false -ErrorAction Stop
-                }
-                'SendOnBehalf' {
-                    Act ("Removing SendOnBehalf from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
-                    Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ Remove = $UserUpn } -ErrorAction Stop
-                }
-                default {
-                    Skip ("Unknown mailbox right '{0}' for mailbox {1}" -f $row.Right, $row.Mailbox)
-                }
-            }
-            Did ("Removed user access from other mailbox: {0} on {1}" -f $row.Right, $row.Mailbox)
-        } catch {
-            Skip ("Failed removing user access. Mailbox: {0}; Right: {1}; Error: {2}" -f $row.Mailbox, $row.Right, $_)
+      try {
+        switch ($row.Right) {
+          'FullAccess' {
+            Act ("Removing FullAccess from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+            Remove-MailboxPermission -Identity $row.MailboxIdentity -User $UserUpn -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
+          }
+          'SendAs' {
+            Act ("Removing SendAs from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+            Remove-RecipientPermission -Identity $row.MailboxIdentity -Trustee $UserUpn -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+          }
+          'SendOnBehalf' {
+            Act ("Removing SendOnBehalf from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+            Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ Remove = $UserUpn } -ErrorAction Stop
+          }
+          default {
+            Skip ("Unknown mailbox right '{0}' for mailbox {1}" -f $row.Right, $row.Mailbox)
+          }
         }
+        Did ("Removed user access from other mailbox: {0} on {1}" -f $row.Right, $row.Mailbox)
+      } catch {
+        Skip ("Failed removing user access. Mailbox: {0}; Right: {1}; Error: {2}" -f $row.Mailbox, $row.Right, $_)
+      }
     }
-}
+  }
 
   # Backup owner on groups where the user is sole owner
   if ($BackupOwnerUpn) {
@@ -853,9 +889,7 @@ if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewh
   if ($HaveAD -and ($DisableAD -or $UpdateAdDescription -or $DisabledOuDn)) {
     try {
       $sam = ($User.UserPrincipalName -split '@')[0]
-      
-      
-      
+
       $adUser = Get-ADUser -Identity $sam -Server $AdServer -Properties Enabled,Description,DistinguishedName -ErrorAction Stop
       if ($DisableAD -and $adUser.Enabled) {
         Act "Disabling AD account"
@@ -874,8 +908,6 @@ if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewh
         Did ("Moved AD object to '{0}'" -f $DisabledOuDn)
       }
 
-
-
     } catch { Skip ("AD actions failed: {0}" -f $_) }
   }
 }
@@ -890,7 +922,7 @@ $After = [ordered]@{
 }
 
 try {
-  $mbx2 = Get-Mailbox -Identity $UserUpn -ErrorAction SilentlyContinue
+  $mbx2 = Get-EXOMailbox -Identity $UserUpn -ErrorAction SilentlyContinue
   if ($mbx2) {
     $After.EXO.Mailbox = @{
       PrimarySmtp          = $mbx2.PrimarySmtpAddress
@@ -956,7 +988,7 @@ $foundMailboxType = if ($Before.EXO.Mailbox -and $Before.EXO.Mailbox.RecipientTy
 $expiryDatePreview = (Get-Date).AddDays([int]$SharedMailboxExpiryDays).ToString('yyyy-MM-dd')
 
 $workNotes = @"
-Offboarding — $($User.DisplayName) <$($User.UserPrincipalName)>
+Offboarding - $($User.DisplayName) <$($User.UserPrincipalName)>
 Date: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
 Ticket: $TicketNumber
 Analyst: $env:USERNAME
@@ -972,7 +1004,7 @@ Summary at a glance
 
 Mailbox
 - Found mailbox: $foundMailboxType
-- $( if ($willConvert) { "Converted to Shared (or already Shared). Expiry marker: $expiryDatePreview" } else { "No mailbox conversion requested" } )
+- $( if (-not $convertRequested) { "Mailbox conversion not requested" } elseif ($alreadyShared) { "Mailbox already Shared. Expiry marker target date: $expiryDatePreview" } else { "Converted to Shared. Expiry marker target date: $expiryDatePreview" } )
 $( if ($SupervisorUpn) {
     $rights = @(); if ($GrantSupervisorFullAccess) { $rights += 'FullAccess' } ; if ($GrantSupervisorSendAs) { $rights += 'SendAs' }
     "Supervisor access: " + ($rights -join ' & ') + " for $SupervisorUpn"
