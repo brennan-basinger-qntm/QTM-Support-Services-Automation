@@ -1,3 +1,5 @@
+# script-offboard
+
 <# ====================================================================================
 Invoke-UserOffboarding.ps1
 ------------------------------------------------------------------------------------
@@ -312,6 +314,18 @@ function Snapshot-UserAccessToOtherMailboxes {
   }
 
   foreach ($mbxItem in $mailboxes) {
+    $mbxIndex++
+    if ($totalMailboxes -gt 0) {
+      $pct = [int](($mbxIndex / $totalMailboxes) * 100)
+      $name = $null
+      try { $name = $mbxItem.PrimarySmtpAddress.ToString() } catch { $name = $mbxItem.Identity }
+      Write-Progress -Id 1 -Activity 'Scanning mailboxes for user access' -Status ("$mbxIndex of $totalMailboxes: $name") -PercentComplete $pct
+    }
+  $totalMailboxes = CountOf $mailboxes
+  $mbxIndex = 0
+  if ($totalMailboxes -gt 0) {
+    Write-Progress -Id 1 -Activity 'Scanning mailboxes for user access' -Status ('0 of ' + $totalMailboxes) -PercentComplete 0
+  }
     try {
       if (-not $mbxItem.PrimarySmtpAddress) { continue }
 
@@ -382,6 +396,7 @@ function Snapshot-UserAccessToOtherMailboxes {
   }
 
   return @($out | Sort-Object Mailbox, Right)
+  try { Write-Progress -Id 1 -Activity 'Scanning mailboxes for user access' -Completed } catch {}
 }
 
 # ---------- snapshot helpers ----------
@@ -409,6 +424,18 @@ function Snapshot-GraphGroups {
   }
 
   foreach ($g in $groups) {
+    $groupIndex++
+    if ($totalGroups -gt 0) {
+      $pct = [int](($groupIndex / $totalGroups) * 100)
+      $n = $null
+      try { $n = $g.DisplayName } catch { $n = $g.Id }
+      Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Status ("$groupIndex of $totalGroups: $n") -PercentComplete $pct
+    }
+  $totalGroups = CountOf $groups
+  $groupIndex = 0
+  if ($totalGroups -gt 0) {
+    Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Status ('0 of ' + $totalGroups) -PercentComplete 0
+  }
     try {
       $gg = Get-MgGroup -GroupId $g.Id -Property "id,displayName,groupTypes,securityEnabled,mail,mailEnabled,membershipRule,membershipRuleProcessingState" -ErrorAction SilentlyContinue
       if ($gg) {
@@ -427,6 +454,7 @@ function Snapshot-GraphGroups {
     } catch { Skip ("Failed to read group {0}: {1}" -f $g.Id, $_) }
   }
   if ((CountOf $out) -gt 0) { return $out | Sort-Object DisplayName } else { return @() }
+  try { Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Completed } catch {}
 }
 
 function Snapshot-GraphOwnedGroups {
@@ -440,6 +468,16 @@ function Snapshot-GraphOwnedGroups {
     return @()
   }
   foreach ($o in $ownedGroups) {
+    $ownedIndex++
+    if ($totalOwned -gt 0) {
+      $pct = [int](($ownedIndex / $totalOwned) * 100)
+      Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ("$ownedIndex of $totalOwned") -PercentComplete $pct
+    }
+  $totalOwned = CountOf $ownedGroups
+  $ownedIndex = 0
+  if ($totalOwned -gt 0) {
+    Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ('0 of ' + $totalOwned) -PercentComplete 0
+  }
     try {
       $gg = Get-MgGroup -GroupId $o.Id -Property "id,displayName,groupTypes" -ErrorAction SilentlyContinue
       if ($gg) {
@@ -454,6 +492,7 @@ function Snapshot-GraphOwnedGroups {
     } catch { }
   }
   return $out
+  try { Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Completed } catch {}
 }
 
 function Snapshot-EXO-DLs {
@@ -465,6 +504,18 @@ function Snapshot-EXO-DLs {
   }
 
   foreach ($dl in $dls) {
+    $dlIndex++
+    if ($totalDls -gt 0) {
+      $pct = [int](($dlIndex / $totalDls) * 100)
+      $gName = $null
+      try { $gName = $dl.DisplayName } catch { $gName = $dl.Identity }
+      Write-Progress -Id 2 -Activity 'Scanning distribution groups for membership' -Status ("$dlIndex of $totalDls: $gName") -PercentComplete $pct
+    }
+  $totalDls = CountOf $dls
+  $dlIndex = 0
+  if ($totalDls -gt 0) {
+    Write-Progress -Id 2 -Activity 'Scanning distribution groups for membership' -Status ('0 of ' + $totalDls) -PercentComplete 0
+  }
     $isDynamic = $dl.RecipientTypeDetails -eq 'DynamicDistributionGroup'
     try {
       if (-not $isDynamic) {
@@ -494,6 +545,7 @@ function Snapshot-EXO-DLs {
     } catch { Skip ("DL scan failed for {0}: {1}" -f $dl.DisplayName, $_) }
   }
   if ((CountOf $dlMatches) -gt 0) { return $dlMatches | Sort-Object DisplayName } else { return @() }
+  try { Write-Progress -Id 2 -Activity 'Scanning distribution groups for membership' -Completed } catch {}
 }
 
 function Snapshot-EXO-Delegations {
@@ -656,14 +708,17 @@ try {
 } catch { $mbx = $null; $Before.EXO.Mailbox = $null }
 
 # Gather memberships and delegations
-Step "Collecting distribution group memberships..."
+Step "Collecting distribution group memberships (this can take a while)"
 $Before.EXO.DLs         = Snapshot-EXO-DLs         -UserSmtp $UserUpn
-Step "Collecting mailbox delegation information..."
+Step "Collecting mailbox delegation information"
 $Before.EXO.Delegations = Snapshot-EXO-Delegations -UserSmtp $UserUpn
-Step "Scanning shared mailboxes for user access..."
+Step "Scanning mailboxes for access held by the user (this can take a while)"
 $Before.EXO.UserAccessElsewhere = Snapshot-UserAccessToOtherMailboxes -UserSmtp $UserUpn -SharedOnly:$ScanSharedMailboxesOnly
+Step "Collecting Microsoft 365 group memberships"
 $Before.Graph.Groups    = Snapshot-GraphGroups     -UserId   $User.Id
+Step "Checking groups where the user is an owner"
 $Before.Graph.Owns      = Snapshot-GraphOwnedGroups -UserId  $User.Id
+Step "Collecting assigned licenses"
 $Before.Licenses        = Snapshot-Licenses        -UserId   $User.Id
 
 # Normalize to arrays for safe export
@@ -789,7 +844,15 @@ if ($Preview) {
 
   # Remove from EXO DLs (static only)
   if ($RemoveFromDistributionLists -and $staticDLCount -gt 0) {
+    $totalStaticDLs = CountOf $staticDLs
+    $idxStaticDLs = 0
+    if ($totalStaticDLs -gt 0) { Write-Progress -Id 5 -Activity 'Removing user from distribution groups' -Status ('0 of ' + $totalStaticDLs) -PercentComplete 0 }
     foreach ($g in $staticDLs) {
+      $idxStaticDLs++
+      if ($totalStaticDLs -gt 0) {
+        $pct = [int](($idxStaticDLs / $totalStaticDLs) * 100)
+        Write-Progress -Id 5 -Activity 'Removing user from distribution groups' -Status ("$idxStaticDLs of $totalStaticDLs") -PercentComplete $pct
+      }
       try {
         Act ("Remove from DL: {0} <{1}>" -f $g.DisplayName, $g.PrimarySmtp)
         Remove-DistributionGroupMember -Identity $g.PrimarySmtp -Member $UserUpn -BypassSecurityGroupManagerCheck -Confirm:$false
@@ -800,7 +863,15 @@ if ($Preview) {
 
   # Remove mailbox delegations
   if ($RemoveMailboxDelegations -and $delegCount -gt 0) {
+    $totalDeleg = CountOf $Before.EXO.Delegations
+    $idxDeleg = 0
+    if ($totalDeleg -gt 0) { Write-Progress -Id 6 -Activity 'Removing mailbox delegations' -Status ('0 of ' + $totalDeleg) -PercentComplete 0 }
     foreach ($d in $Before.EXO.Delegations) {
+      $idxDeleg++
+      if ($totalDeleg -gt 0) {
+        $pct = [int](($idxDeleg / $totalDeleg) * 100)
+        Write-Progress -Id 6 -Activity 'Removing mailbox delegations' -Status ("$idxDeleg of $totalDeleg") -PercentComplete $pct
+      }
       try {
         switch ($d.Right) {
           'FullAccess' {
@@ -821,7 +892,15 @@ if ($Preview) {
 
   # Remove the offboarded user's access to other mailboxes
   if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewhere) -gt 0) {
+    $totalElsewhere = CountOf $Before.EXO.UserAccessElsewhere
+    $idxElsewhere = 0
+    if ($totalElsewhere -gt 0) { Write-Progress -Id 7 -Activity 'Removing user access to other mailboxes' -Status ('0 of ' + $totalElsewhere) -PercentComplete 0 }
     foreach ($row in $Before.EXO.UserAccessElsewhere) {
+      $idxElsewhere++
+      if ($totalElsewhere -gt 0) {
+        $pct = [int](($idxElsewhere / $totalElsewhere) * 100)
+        Write-Progress -Id 7 -Activity 'Removing user access to other mailboxes' -Status ("$idxElsewhere of $totalElsewhere") -PercentComplete $pct
+      }
       try {
         switch ($row.Right) {
           'FullAccess' {
@@ -852,7 +931,15 @@ if ($Preview) {
     try {
       $backup = Resolve-GraphUser -Identity $BackupOwnerUpn
       $soleOwner = $Before.Graph.Owns | Where-Object { $_.OwnersCount -le 1 }
+    $totalSoleOwner = CountOf $soleOwner
+    $idxSoleOwner = 0
+    if ($totalSoleOwner -gt 0) { Write-Progress -Id 8 -Activity 'Adding backup owner to groups' -Status ('0 of ' + $totalSoleOwner) -PercentComplete 0 }
       foreach ($o in $soleOwner) {
+      $idxSoleOwner++
+      if ($totalSoleOwner -gt 0) {
+        $pct = [int](($idxSoleOwner / $totalSoleOwner) * 100)
+        Write-Progress -Id 8 -Activity 'Adding backup owner to groups' -Status ("$idxSoleOwner of $totalSoleOwner") -PercentComplete $pct
+      }
         try {
           Act ("Adding backup owner '{0}' to group: {1}" -f $backup.UserPrincipalName, $o.DisplayName)
           Add-MgGroupOwnerByRef -GroupId $o.GroupId -BodyParameter @{ "@odata.id" = "https://graph.microsoft.com/v1.0/directoryObjects/$($backup.Id)" } | Out-Null
@@ -864,7 +951,15 @@ if ($Preview) {
 
   # Remove from static Graph groups
   if ($RemoveFromGroups -and $graphStaticCount -gt 0) {
+    $totalGraphStatic = CountOf $graphStatic
+    $idxGraphStatic = 0
+    if ($totalGraphStatic -gt 0) { Write-Progress -Id 9 -Activity 'Removing user from Microsoft 365 groups' -Status ('0 of ' + $totalGraphStatic) -PercentComplete 0 }
     foreach ($g in $graphStatic) {
+      $idxGraphStatic++
+      if ($totalGraphStatic -gt 0) {
+        $pct = [int](($idxGraphStatic / $totalGraphStatic) * 100)
+        Write-Progress -Id 9 -Activity 'Removing user from Microsoft 365 groups' -Status ("$idxGraphStatic of $totalGraphStatic") -PercentComplete $pct
+      }
       try {
         Act ("Remove from Graph group: {0}" -f $g.DisplayName)
         Remove-MgGroupMemberByRef -GroupId $g.GroupId -DirectoryObjectId $User.Id -Confirm:$false
@@ -922,6 +1017,12 @@ if ($Preview) {
 
 # ---------- AFTER snapshot ----------
 Step "Snapshot AFTER"
+try { Write-Progress -Id 5 -Activity 'Removing user from distribution groups' -Completed } catch {}
+try { Write-Progress -Id 6 -Activity 'Removing mailbox delegations' -Completed } catch {}
+try { Write-Progress -Id 7 -Activity 'Removing user access to other mailboxes' -Completed } catch {}
+try { Write-Progress -Id 8 -Activity 'Adding backup owner to groups' -Completed } catch {}
+try { Write-Progress -Id 9 -Activity 'Removing user from Microsoft 365 groups' -Completed } catch {}
+
 $After = [ordered]@{
   EXO      = [ordered]@{}
   Graph    = [ordered]@{}
