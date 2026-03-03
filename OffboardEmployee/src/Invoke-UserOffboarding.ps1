@@ -44,8 +44,13 @@ param(
   [switch]$RemoveFromDistributionLists = $true,
   [switch]$RemoveFromGroups          = $true,
   [switch]$RemoveMailboxDelegations  = $true,
+
   [switch]$RemoveLicenses = $true,
   [switch]$DisableEntraSignIn = $true,
+
+  # Mailbox access cleanup (user has access to other mailboxes)
+  [switch]$RemoveUserAccessToOtherMailboxes = $true,
+  [switch]$ScanSharedMailboxesOnly = $true,
 
   # Active Directory (on-prem) — optional. If not available, we skip.
   [switch]$DisableAD,
@@ -280,6 +285,100 @@ try { $User = Resolve-GraphUser -Identity $UserUpn } catch {
   Stop-Transcript | Out-Null
   Write-Host "Cannot proceed without a valid target user. Exiting." -ForegroundColor Red
   return
+}
+
+function Snapshot-UserAccessToOtherMailboxes {
+    param(
+        [Parameter(Mandatory=$true)][string]$UserSmtp,
+        [switch]$SharedOnly
+    )
+
+    $out = @()
+
+    # Choose what mailbox types to scan
+    $mailboxes = @()
+    try {
+        if ($SharedOnly) {
+            $mailboxes = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize Unlimited -ErrorAction Stop
+        } else {
+            $mailboxes = Get-Mailbox -ResultSize Unlimited -ErrorAction Stop
+        }
+    } catch {
+        Skip ("Unable to enumerate mailboxes for access scan: {0}" -f $_)
+        return @()
+    }
+
+    foreach ($mbxItem in $mailboxes) {
+        try {
+            if (-not $mbxItem.PrimarySmtpAddress) { continue }
+
+            # Skip the user's own mailbox if it shows up in the list
+            if ($mbxItem.PrimarySmtpAddress.ToString() -ieq $UserSmtp) {
+                continue
+            }
+
+            $mbxId = $mbxItem.Identity
+            $mbxSmtp = $mbxItem.PrimarySmtpAddress.ToString()
+
+            # FullAccess
+            try {
+                $fa = Get-MailboxPermission -Identity $mbxId -User $UserSmtp -ErrorAction SilentlyContinue |
+                    Where-Object { -not $_.IsInherited -and -not $_.Deny -and $_.AccessRights -contains 'FullAccess' }
+
+                if ($fa) {
+                    $out += [pscustomobject]@{
+                        Mailbox = $mbxSmtp
+                        MailboxIdentity = $mbxId
+                        Right = 'FullAccess'
+                        Trustee = $UserSmtp
+                    }
+                }
+            } catch {}
+
+            # SendAs
+            try {
+                $sa = Get-RecipientPermission -Identity $mbxId -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Trustee -ieq $UserSmtp -and $_.AccessRights -contains 'SendAs' }
+
+                if ($sa) {
+                    $out += [pscustomobject]@{
+                        Mailbox = $mbxSmtp
+                        MailboxIdentity = $mbxId
+                        Right = 'SendAs'
+                        Trustee = $UserSmtp
+                    }
+                }
+            } catch {}
+
+            # SendOnBehalf
+            try {
+                $sobList = (Get-Mailbox -Identity $mbxId -Property GrantSendOnBehalfTo -ErrorAction SilentlyContinue).GrantSendOnBehalfTo
+                if ($sobList) {
+                    $hit = $false
+                    foreach ($t in $sobList) {
+                        try {
+                            if ($t -and $t.PrimarySmtpAddress -and ($t.PrimarySmtpAddress.ToString() -ieq $UserSmtp)) { $hit = $true }
+                            elseif ($t -and ($t.ToString() -ieq $UserSmtp)) { $hit = $true }
+                        } catch {}
+                    }
+
+                    if ($hit) {
+                        $out += [pscustomobject]@{
+                            Mailbox = $mbxSmtp
+                            MailboxIdentity = $mbxId
+                            Right = 'SendOnBehalf'
+                            Trustee = $UserSmtp
+                        }
+                    }
+                }
+            } catch {}
+
+        } catch {
+            Skip ("Mailbox access scan failed for mailbox: {0}. Error: {1}" -f $mbxItem.PrimarySmtpAddress, $_)
+        }
+    }
+
+    return @($out | Sort-Object Mailbox, Right)
 }
 
 # ---------- snapshot helpers ----------
@@ -525,6 +624,7 @@ try {
 # Gather memberships and delegations
 $Before.EXO.DLs         = Snapshot-EXO-DLs         -UserSmtp $UserUpn
 $Before.EXO.Delegations = Snapshot-EXO-Delegations -UserSmtp $UserUpn
+$Before.EXO.UserAccessElsewhere = Snapshot-UserAccessToOtherMailboxes -UserSmtp $UserUpn -SharedOnly:$ScanSharedMailboxesOnly
 $Before.Graph.Groups    = Snapshot-GraphGroups     -UserId   $User.Id
 $Before.Graph.Owns      = Snapshot-GraphOwnedGroups -UserId  $User.Id
 $Before.Licenses        = Snapshot-Licenses        -UserId   $User.Id
@@ -532,6 +632,7 @@ $Before.Licenses        = Snapshot-Licenses        -UserId   $User.Id
 # Normalize to arrays for safe export
 $Before.EXO.DLs         = As-Array $Before.EXO.DLs
 $Before.EXO.Delegations = As-Array $Before.EXO.Delegations
+$Before.EXO.UserAccessElsewhere = As-Array $Before.EXO.UserAccessElsewhere
 $Before.Graph.Groups    = As-Array $Before.Graph.Groups
 $Before.Licenses        = As-Array $Before.Licenses
 
@@ -550,6 +651,7 @@ if ($DisableAD -or $UpdateAdDescription -or $DisabledOuDn) {
 # Write BEFORE snapshots
 Write-CsvSafe -Data $Before.EXO.DLs         -Path (Join-Path $OutputFolder 'Before-EXO-DLs.csv')         -Headers @('DisplayName','PrimarySmtp','IsDynamic')
 Write-CsvSafe -Data $Before.EXO.Delegations -Path (Join-Path $OutputFolder 'Before-EXO-Delegations.csv') -Headers @('Mailbox','Right','Trustee')
+Write-CsvSafe -Data $Before.EXO.UserAccessElsewhere -Path (Join-Path $OutputFolder 'Before-EXO-UserAccessToOtherMailboxes.csv') -Headers @('Mailbox','MailboxIdentity','Right','Trustee')
 Write-CsvSafe -Data $Before.Graph.Groups    -Path (Join-Path $OutputFolder 'Before-Graph-Groups.csv')    -Headers @('GroupId','DisplayName','Mail','MailEnabled','IsSecurity','IsUnified','IsDynamic')
 Write-CsvSafe -Data $Before.Licenses        -Path (Join-Path $OutputFolder 'Before-Licenses.csv')        -Headers @('SkuId','SkuPart','Svc')
 if ($Before.AD) { $Before.AD | Export-Csv -Path (Join-Path $OutputFolder 'Before-AD.csv') -NoTypeInformation -Encoding UTF8 }
@@ -581,6 +683,12 @@ $delegCount = CountOf $Before.EXO.Delegations
 if ($RemoveMailboxDelegations -and $delegCount -gt 0) {
   Add-Plan 'Mailbox' ("Remove {0} mailbox delegation entries" -f $delegCount)
 }
+
+$elsewhereCount = CountOf $Before.EXO.UserAccessElsewhere
+if ($RemoveUserAccessToOtherMailboxes -and $elsewhereCount -gt 0) {
+    Add-Plan 'Mailbox' ("Remove user access from {0} other mailbox permission entries" -f $elsewhereCount)
+}
+
 
 if ((CountOf $Before.Licenses) -gt 0 -and $RemoveLicenses) { Add-Plan 'Licensing' "Remove all assigned licenses" }
 
@@ -666,6 +774,34 @@ if ($Preview) {
       } catch { Skip ("Delegation removal failed for {0} [{1}]: {2}" -f $d.Mailbox, $d.Right, $_) }
     }
   }
+
+  # Remove the offboarded user's access to other mailboxes
+if ($RemoveUserAccessToOtherMailboxes -and (CountOf $Before.EXO.UserAccessElsewhere) -gt 0) {
+    foreach ($row in $Before.EXO.UserAccessElsewhere) {
+        try {
+            switch ($row.Right) {
+                'FullAccess' {
+                    Act ("Removing FullAccess from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+                    Remove-MailboxPermission -Identity $row.MailboxIdentity -User $UserUpn -AccessRights FullAccess -Confirm:$false -ErrorAction Stop
+                }
+                'SendAs' {
+                    Act ("Removing SendAs from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+                    Remove-RecipientPermission -Identity $row.MailboxIdentity -Trustee $UserUpn -AccessRights SendAs -Confirm:$false -ErrorAction Stop
+                }
+                'SendOnBehalf' {
+                    Act ("Removing SendOnBehalf from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
+                    Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ Remove = $UserUpn } -ErrorAction Stop
+                }
+                default {
+                    Skip ("Unknown mailbox right '{0}' for mailbox {1}" -f $row.Right, $row.Mailbox)
+                }
+            }
+            Did ("Removed user access from other mailbox: {0} on {1}" -f $row.Right, $row.Mailbox)
+        } catch {
+            Skip ("Failed removing user access. Mailbox: {0}; Right: {1}; Error: {2}" -f $row.Mailbox, $row.Right, $_)
+        }
+    }
+}
 
   # Backup owner on groups where the user is sole owner
   if ($BackupOwnerUpn) {
@@ -766,6 +902,7 @@ try {
 
 $After.EXO.DLs         = Snapshot-EXO-DLs         -UserSmtp $UserUpn
 $After.EXO.Delegations = Snapshot-EXO-Delegations -UserSmtp $UserUpn
+$After.EXO.UserAccessElsewhere = Snapshot-UserAccessToOtherMailboxes -UserSmtp $UserUpn -SharedOnly:$ScanSharedMailboxesOnly
 $After.Graph.Groups    = Snapshot-GraphGroups     -UserId   $User.Id
 $After.Licenses        = Snapshot-Licenses        -UserId   $User.Id
 if ($HaveAD) {
@@ -778,10 +915,12 @@ $After.EXO.DLs         = As-Array $After.EXO.DLs
 $After.EXO.Delegations = As-Array $After.EXO.Delegations
 $After.Graph.Groups    = As-Array $After.Graph.Groups
 $After.Licenses        = As-Array $After.Licenses
+$After.EXO.UserAccessElsewhere = As-Array $After.EXO.UserAccessElsewhere
 
 # Write AFTER snapshots
 Write-CsvSafe -Data $After.EXO.DLs         -Path (Join-Path $OutputFolder 'After-EXO-DLs.csv')           -Headers @('DisplayName','PrimarySmtp','IsDynamic')
 Write-CsvSafe -Data $After.EXO.Delegations -Path (Join-Path $OutputFolder 'After-EXO-Delegations.csv')   -Headers @('Mailbox','Right','Trustee')
+Write-CsvSafe -Data $After.EXO.UserAccessElsewhere -Path (Join-Path $OutputFolder 'After-EXO-UserAccessToOtherMailboxes.csv') -Headers @('Mailbox','MailboxIdentity','Right','Trustee')
 Write-CsvSafe -Data $After.Graph.Groups    -Path (Join-Path $OutputFolder 'After-Graph-Groups.csv')      -Headers @('GroupId','DisplayName','Mail','MailEnabled','IsSecurity','IsUnified','IsDynamic')
 Write-CsvSafe -Data $After.Licenses        -Path (Join-Path $OutputFolder 'After-Licenses.csv')          -Headers @('SkuId','SkuPart','Svc')
 if ($After.AD) { $After.AD | Export-Csv -Path (Join-Path $OutputFolder 'After-AD.csv') -NoTypeInformation -Encoding UTF8 }
@@ -807,6 +946,9 @@ $a_graph    = $After.Graph.Groups
 $b_deleg    = $Before.EXO.Delegations
 $a_deleg    = $After.EXO.Delegations
 
+$b_elsewhere = $Before.EXO.UserAccessElsewhere
+$a_elsewhere = $After.EXO.UserAccessElsewhere
+
 $b_lic      = $Before.Licenses
 $a_lic      = $After.Licenses
 
@@ -825,6 +967,7 @@ Summary at a glance
 - $(Summ "Graph groups (all)" $b_graph $a_graph)
 - $(Summ "Mailbox delegations" $b_deleg $a_deleg)
 - $(Summ "Assigned licenses" $b_lic $a_lic)
+- $(Summ "User access to other mailboxes" $b_elsewhere $a_elsewhere)
 - $(if($HaveAD){"AD snapshot written"}else{"AD not executed"})
 
 Mailbox
