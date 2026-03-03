@@ -62,7 +62,7 @@ param(
   [switch]$Apply,                          # do changes only when present
   [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
   [switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
-  [string]$OutputFolder = (Join-Path $env:USERPROFILE ("Desktop\Offboarding-" + (Get-Date -Format "yyyyMMdd-HHmmss")))
+  [string]$OutputFolder
 )
 
 Set-StrictMode -Version Latest
@@ -76,6 +76,24 @@ function Skip([string]$msg){ Write-Warning $msg }
 function Did ([string]$msg){ Write-Host $msg -ForegroundColor Green }
 
 # ---------- collection/CSV safety helpers ----------
+function Get-CompactNameFromIdentity {
+  param([Parameter(Mandatory=$true)][string]$Identity)
+
+  $local = (($Identity -split '@')[0] -replace '[^A-Za-z0-9._ -]', ' ').Trim()
+  if (-not $local) { return 'UnknownUser' }
+
+  $parts = @($local -split '[._ -]+' | Where-Object { $_ })
+  if ((CountOf $parts) -eq 0) { return 'UnknownUser' }
+
+  $name = ($parts | ForEach-Object {
+    if ($_.Length -gt 1) { $_.Substring(0,1).ToUpperInvariant() + $_.Substring(1).ToLowerInvariant() }
+    else { $_.ToUpperInvariant() }
+  }) -join ''
+
+  if ([string]::IsNullOrWhiteSpace($name)) { return 'UnknownUser' }
+  return $name
+}
+
 function As-Array {
   param($x)
   if ($null -eq $x) { return @() }
@@ -128,6 +146,12 @@ function Write-CsvSafe {
 }
 
 $Preview = -not $Apply
+
+if ([string]::IsNullOrWhiteSpace($OutputFolder)) {
+  $userNamePrefix = Get-CompactNameFromIdentity -Identity $UserUpn
+  $folderName = ("{0}-Offboarding-{1}" -f $userNamePrefix, (Get-Date -Format "yyyyMMdd-HHmmss"))
+  $OutputFolder = Join-Path $env:USERPROFILE (Join-Path "Desktop" $folderName)
+}
 
 # Create output folder & transcript
 New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
