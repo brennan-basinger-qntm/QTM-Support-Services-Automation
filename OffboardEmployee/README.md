@@ -109,8 +109,7 @@ After it finishes, open the evidence folder again and review the after snapshot 
 This grants the supervisor Full Access and Send As.
 
 ```powershell
-.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" \
-  -SupervisorUpn "manager.name@quantinuum.com" -GrantSupervisorFullAccess -GrantSupervisorSendAs
+.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" -SupervisorUpn "manager.name@quantinuum.com" -GrantSupervisorFullAccess -GrantSupervisorSendAs
 ```
 
 To apply changes, add `-Apply`.
@@ -120,8 +119,7 @@ To apply changes, add `-Apply`.
 If the user is the only owner of a Microsoft 365 group, the script can add a backup owner.
 
 ```powershell
-.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" \
-  -BackupOwnerUpn "backup.owner@quantinuum.com"
+.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" -BackupOwnerUpn "backup.owner@quantinuum.com"
 ```
 
 To apply changes, add `-Apply`.
@@ -133,8 +131,7 @@ These steps only run if the Active Directory module is available on the computer
 Example:
 
 ```powershell
-.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" \
-  -DisableAD -UpdateAdDescription -Apply
+.\Invoke-UserOffboarding.ps1 -UserUpn "first.last@quantinuum.com" -TicketNumber "INC12345678" -DisableAD -UpdateAdDescription -Apply
 ```
 
 ## ServiceNow work notes
