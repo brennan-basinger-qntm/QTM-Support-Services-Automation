@@ -499,7 +499,8 @@ function Snapshot-EXO-DLs {
 function Snapshot-EXO-Delegations {
   param([string]$UserSmtp)
   $out = @()
-  try { $mbx = Get-Mailbox -Identity $UserSmtp -ErrorAction Stop } catch { return @() }
+  # Use Get-EXOMailbox for Exchange Online and request all properties so GrantSendOnBehalfTo is available.
+  try { $mbx = Get-EXOMailbox -Identity $UserSmtp -PropertySets All -ErrorAction Stop } catch { return @() }
 
   try {
     $fa = Get-MailboxPermission -Identity $mbx.Identity -ErrorAction SilentlyContinue |
@@ -514,7 +515,7 @@ function Snapshot-EXO-Delegations {
   } catch {}
 
   try {
-    $sob = (Get-Mailbox -Identity $mbx.Identity -Property GrantSendOnBehalfTo -ErrorAction SilentlyContinue).GrantSendOnBehalfTo
+    $sob = $mbx.GrantSendOnBehalfTo
     foreach ($t in $sob) {
       if ($null -eq $t) { continue }
 
@@ -655,8 +656,11 @@ try {
 } catch { $mbx = $null; $Before.EXO.Mailbox = $null }
 
 # Gather memberships and delegations
+Step "Collecting distribution group memberships..."
 $Before.EXO.DLs         = Snapshot-EXO-DLs         -UserSmtp $UserUpn
+Step "Collecting mailbox delegation information..."
 $Before.EXO.Delegations = Snapshot-EXO-Delegations -UserSmtp $UserUpn
+Step "Scanning shared mailboxes for user access..."
 $Before.EXO.UserAccessElsewhere = Snapshot-UserAccessToOtherMailboxes -UserSmtp $UserUpn -SharedOnly:$ScanSharedMailboxesOnly
 $Before.Graph.Groups    = Snapshot-GraphGroups     -UserId   $User.Id
 $Before.Graph.Owns      = Snapshot-GraphOwnedGroups -UserId  $User.Id
@@ -830,7 +834,7 @@ if ($Preview) {
           }
           'SendOnBehalf' {
             Act ("Removing SendOnBehalf from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
-            Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ Remove = $UserUpn } -ErrorAction Stop
+            Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ remove = $UserUpn } -ErrorAction Stop
           }
           default {
             Skip ("Unknown mailbox right '{0}' for mailbox {1}" -f $row.Right, $row.Mailbox)
