@@ -497,7 +497,13 @@ function Snapshot-GraphOwnedGroups {
 
 function Snapshot-EXO-DLs {
   param([string]$UserSmtp)
+
   $dlMatches = @()
+
+  # Progress helpers (initialized early to satisfy StrictMode)
+  $totalDls = 0
+  $dlIndex = 0
+  
   try { $dls = Get-DistributionGroup -ResultSize Unlimited -ErrorAction Stop } catch {
     Skip ("Unable to enumerate distribution groups in EXO: {0}" -f $_)
     return @()
