@@ -319,7 +319,7 @@ function Snapshot-UserAccessToOtherMailboxes {
       $pct = [int](($mbxIndex / $totalMailboxes) * 100)
       $name = $null
       try { $name = $mbxItem.PrimarySmtpAddress.ToString() } catch { $name = $mbxItem.Identity }
-      Write-Progress -Id 1 -Activity 'Scanning mailboxes for user access' -Status ("$mbxIndex of $totalMailboxes: $name") -PercentComplete $pct
+      Write-Progress -Id 1 -Activity 'Scanning mailboxes for user access' -Status ("{0} of {1}: {2}" -f $mbxIndex, $totalMailboxes, $name) -PercentComplete $pct
     }
   $totalMailboxes = CountOf $mailboxes
   $mbxIndex = 0
@@ -429,7 +429,7 @@ function Snapshot-GraphGroups {
       $pct = [int](($groupIndex / $totalGroups) * 100)
       $n = $null
       try { $n = $g.DisplayName } catch { $n = $g.Id }
-      Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Status ("$groupIndex of $totalGroups: $n") -PercentComplete $pct
+      Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Status ("{0} of {1}: {2}" -f $groupIndex, $totalGroups, $n) -PercentComplete $pct
     }
   $totalGroups = CountOf $groups
   $groupIndex = 0
@@ -471,7 +471,7 @@ function Snapshot-GraphOwnedGroups {
     $ownedIndex++
     if ($totalOwned -gt 0) {
       $pct = [int](($ownedIndex / $totalOwned) * 100)
-      Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ("$ownedIndex of $totalOwned") -PercentComplete $pct
+      Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ("{0} of {1}" -f $ownedIndex, $totalOwned) -PercentComplete $pct
     }
   $totalOwned = CountOf $ownedGroups
   $ownedIndex = 0
@@ -509,7 +509,7 @@ function Snapshot-EXO-DLs {
       $pct = [int](($dlIndex / $totalDls) * 100)
       $gName = $null
       try { $gName = $dl.DisplayName } catch { $gName = $dl.Identity }
-      Write-Progress -Id 2 -Activity 'Scanning distribution groups for membership' -Status ("$dlIndex of $totalDls: $gName") -PercentComplete $pct
+      Write-Progress -Id 2 -Activity 'Scanning distribution groups for membership' -Status ("{0} of {1}: {2}" -f $dlIndex, $totalDls, $gName) -PercentComplete $pct
     }
   $totalDls = CountOf $dls
   $dlIndex = 0
@@ -851,7 +851,7 @@ if ($Preview) {
       $idxStaticDLs++
       if ($totalStaticDLs -gt 0) {
         $pct = [int](($idxStaticDLs / $totalStaticDLs) * 100)
-        Write-Progress -Id 5 -Activity 'Removing user from distribution groups' -Status ("$idxStaticDLs of $totalStaticDLs") -PercentComplete $pct
+        Write-Progress -Id 5 -Activity 'Removing user from distribution groups' -Status ("0 of 1" -f $idxStaticDLs, $totalStaticDLs) -PercentComplete $pct
       }
       try {
         Act ("Remove from DL: {0} <{1}>" -f $g.DisplayName, $g.PrimarySmtp)
@@ -870,7 +870,7 @@ if ($Preview) {
       $idxDeleg++
       if ($totalDeleg -gt 0) {
         $pct = [int](($idxDeleg / $totalDeleg) * 100)
-        Write-Progress -Id 6 -Activity 'Removing mailbox delegations' -Status ("$idxDeleg of $totalDeleg") -PercentComplete $pct
+        Write-Progress -Id 6 -Activity 'Removing mailbox delegations' -Status ("0 of 1" -f $idxDeleg, $totalDeleg) -PercentComplete $pct
       }
       try {
         switch ($d.Right) {
@@ -899,7 +899,7 @@ if ($Preview) {
       $idxElsewhere++
       if ($totalElsewhere -gt 0) {
         $pct = [int](($idxElsewhere / $totalElsewhere) * 100)
-        Write-Progress -Id 7 -Activity 'Removing user access to other mailboxes' -Status ("$idxElsewhere of $totalElsewhere") -PercentComplete $pct
+        Write-Progress -Id 7 -Activity 'Removing user access to other mailboxes' -Status ("0 of 1" -f $idxElsewhere, $totalElsewhere) -PercentComplete $pct
       }
       try {
         switch ($row.Right) {
@@ -913,7 +913,7 @@ if ($Preview) {
           }
           'SendOnBehalf' {
             Act ("Removing SendOnBehalf from other mailbox. Mailbox: {0}; User: {1}" -f $row.Mailbox, $UserUpn)
-            Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ remove = $UserUpn } -ErrorAction Stop
+            Set-Mailbox -Identity $row.MailboxIdentity -GrantSendOnBehalfTo @{ Remove = $UserUpn } -ErrorAction Stop
           }
           default {
             Skip ("Unknown mailbox right '{0}' for mailbox {1}" -f $row.Right, $row.Mailbox)
@@ -938,7 +938,7 @@ if ($Preview) {
       $idxSoleOwner++
       if ($totalSoleOwner -gt 0) {
         $pct = [int](($idxSoleOwner / $totalSoleOwner) * 100)
-        Write-Progress -Id 8 -Activity 'Adding backup owner to groups' -Status ("$idxSoleOwner of $totalSoleOwner") -PercentComplete $pct
+        Write-Progress -Id 8 -Activity 'Adding backup owner to groups' -Status ("0 of 1" -f $idxSoleOwner, $totalSoleOwner) -PercentComplete $pct
       }
         try {
           Act ("Adding backup owner '{0}' to group: {1}" -f $backup.UserPrincipalName, $o.DisplayName)
@@ -958,7 +958,7 @@ if ($Preview) {
       $idxGraphStatic++
       if ($totalGraphStatic -gt 0) {
         $pct = [int](($idxGraphStatic / $totalGraphStatic) * 100)
-        Write-Progress -Id 9 -Activity 'Removing user from Microsoft 365 groups' -Status ("$idxGraphStatic of $totalGraphStatic") -PercentComplete $pct
+        Write-Progress -Id 9 -Activity 'Removing user from Microsoft 365 groups' -Status ("0 of 1" -f $idxGraphStatic, $totalGraphStatic) -PercentComplete $pct
       }
       try {
         Act ("Remove from Graph group: {0}" -f $g.DisplayName)
