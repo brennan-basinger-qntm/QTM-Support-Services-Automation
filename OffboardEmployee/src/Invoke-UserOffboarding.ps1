@@ -62,7 +62,7 @@ param(
   [switch]$Apply,                          # do changes only when present
   [string]$TenantHint = '94c4857e-1130-4ab8-8eac-069b40c9db20',  # tenant id or verified domain
   [switch]$UseElevatedGraphScopes,         # adds Directory.ReadWrite.All
-  [string]$OutputFolder = (Join-Path $env:USERPROFILE ("Desktop\Offboarding-" + (Get-Date -Format "yyyyMMdd-HHmmss")))
+  [string]$OutputFolder
 )
 
 Set-StrictMode -Version Latest
@@ -76,6 +76,24 @@ function Skip([string]$msg){ Write-Warning $msg }
 function Did ([string]$msg){ Write-Host $msg -ForegroundColor Green }
 
 # ---------- collection/CSV safety helpers ----------
+function Get-CompactNameFromIdentity {
+  param([Parameter(Mandatory=$true)][string]$Identity)
+
+  $local = (($Identity -split '@')[0] -replace '[^A-Za-z0-9._ -]', ' ').Trim()
+  if (-not $local) { return 'UnknownUser' }
+
+  $parts = @($local -split '[._ -]+' | Where-Object { $_ })
+  if ((CountOf $parts) -eq 0) { return 'UnknownUser' }
+
+  $name = ($parts | ForEach-Object {
+    if ($_.Length -gt 1) { $_.Substring(0,1).ToUpperInvariant() + $_.Substring(1).ToLowerInvariant() }
+    else { $_.ToUpperInvariant() }
+  }) -join ''
+
+  if ([string]::IsNullOrWhiteSpace($name)) { return 'UnknownUser' }
+  return $name
+}
+
 function As-Array {
   param($x)
   if ($null -eq $x) { return @() }
@@ -129,6 +147,12 @@ function Write-CsvSafe {
 
 $Preview = -not $Apply
 
+if ([string]::IsNullOrWhiteSpace($OutputFolder)) {
+  $userNamePrefix = Get-CompactNameFromIdentity -Identity $UserUpn
+  $folderName = ("{0}-Offboarding-{1}" -f $userNamePrefix, (Get-Date -Format "yyyyMMdd-HHmmss"))
+  $OutputFolder = Join-Path $env:USERPROFILE (Join-Path "Desktop" $folderName)
+}
+
 # Create output folder & transcript
 New-Item -ItemType Directory -Path $OutputFolder -Force | Out-Null
 $TranscriptPath = Join-Path $OutputFolder ("Transcript-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".txt")
@@ -164,23 +188,12 @@ function Ensure-EXO {
     Act "Connecting to Exchange Online..."
     $isDomain = ($TenantHint -and ($TenantHint -match '^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$'))
 
-
-    # 3) Try DisableWAM (EXO 3.7.2+)
-    try {
-      if ($isDomain) { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false} #Connect-ExchangeOnline -UserPrincipalName $UserUpn -Organization $TenantHint -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false} #Connect-ExchangeOnline -UserPrincipalName $UserUpn -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
-      return
-    } catch {
-      throw ("Failed to connect to Exchange Online after all fallbacks: {0}" -f $_)
-    }
-
     # 1) Try normal WAM sign-in
     try {
       if ($isDomain) { Connect-ExchangeOnline -ShowBanner:$false -Organization $TenantHint -ErrorAction Stop | Out-Null }
       else           { Connect-ExchangeOnline -ShowBanner:$false -ErrorAction Stop | Out-Null }
       return
     } catch { Skip ("WAM sign-in failed, retrying with Device Code: {0}" -f $_) }
-
 
     # 2) Fallback to Device Code (bypasses WAM entirely)
     try {
@@ -189,14 +202,16 @@ function Ensure-EXO {
       return
     } catch { Skip ("Device Code also failed, trying DisableWAM if supported: {0}" -f $_) }
 
-
-
-
-
-
+    # 3) Try DisableWAM (EXO 3.7.2+)
+    try {
+      if ($isDomain) { Connect-ExchangeOnline -Organization $TenantHint -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
+      else           { Connect-ExchangeOnline -DisableWAM -ShowBanner:$false -ErrorAction Stop | Out-Null }
+      return
+    } catch {
+      throw ("Failed to connect to Exchange Online after all fallbacks: {0}" -f $_)
+    }
   }
 }
-
 function Ensure-Graph {
   param([string[]]$Scopes)
   Ensure-ModuleLoaded -Name Microsoft.Graph -MinVersion ([Version]'2.16.0')
@@ -788,7 +803,6 @@ $a_dynDL    = @($After.EXO.DLs  | Where-Object { $_ -and (Has-Prop $_ 'IsDynamic
 
 $b_graph    = $Before.Graph.Groups
 $a_graph    = $After.Graph.Groups
-$a_graphDyn = CountOf (@($a_graph | Where-Object { $_ -and (Has-Prop $_ 'IsDynamic') -and $_.IsDynamic }))
 
 $b_deleg    = $Before.EXO.Delegations
 $a_deleg    = $After.EXO.Delegations
@@ -807,7 +821,7 @@ Analyst: $env:USERNAME
 Mode: $(if($Preview){"Preview (no changes)"}else{"Applied"})
 
 Summary at a glance
-- $(Summ "EXO DLs (static)" $b_staticDL $a_staticDL)  | dynamic listed: $a_graphDyn
+- $(Summ "EXO DLs (static)" $b_staticDL $a_staticDL)  | dynamic listed: $(CountOf $a_dynDL)
 - $(Summ "Graph groups (all)" $b_graph $a_graph)
 - $(Summ "Mailbox delegations" $b_deleg $a_deleg)
 - $(Summ "Assigned licenses" $b_lic $a_lic)
