@@ -54,7 +54,7 @@ cd "C:\Path\To\OffboardEmployee\src"
 6. Run the bootstrap script:
 
 ```powershell
-.\Bootstrap-Env.ps1
+.\Bootstrap-Env-Setup.ps1
 ```
 
 If you see messages about installing modules, let it finish.
