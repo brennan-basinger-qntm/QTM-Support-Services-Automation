@@ -60,6 +60,8 @@ param(
 
 [string]$DisabledOuDn = "OU=Disabled Users,OU=Corp,DC=quantinuum,DC=com",
 
+
+
 # Default AD server (DC) to use for all AD calls
 [string]$AdServer = "CO49SVDC2.quantinuum.com",
 
@@ -1173,7 +1175,7 @@ Artifacts
 $workNotes | Out-File $notesPath -Encoding utf8
 
 # ---------- disconnect & wrap ----------
-try { Disconnect-ExchangeOnline -Confirm:$false | Out-Null } catch {}
+# try { Disconnect-ExchangeOnline -Confirm:$false | Out-Null } catch {}
 try { Disconnect-MgGraph | Out-Null } catch {}
 Stop-Transcript | Out-Null
 
