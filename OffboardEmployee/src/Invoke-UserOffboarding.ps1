@@ -300,6 +300,10 @@ function Snapshot-UserAccessToOtherMailboxes {
 
   $out = @()
 
+  # Progress helpers (initialized early to satisfy StrictMode).
+  $totalMailboxes = 0
+  $mbxIndex = 0
+
   # Choose what mailbox types to scan
   $mailboxes = @()
   try {
@@ -402,7 +406,12 @@ function Snapshot-UserAccessToOtherMailboxes {
 # ---------- snapshot helpers ----------
 function Snapshot-GraphGroups {
   param([string]$UserId)
+
   $out = @()
+
+  # Progress helpers (initialized early to satisfy StrictMode).
+  $totalGroups = 0
+  $groupIndex = 0
 
   # Try typed endpoint first; if unavailable, fall back to generic + verify
   $groups = $null
@@ -457,9 +466,19 @@ function Snapshot-GraphGroups {
   try { Write-Progress -Id 3 -Activity 'Reading group details from Microsoft Graph' -Completed } catch {}
 }
 
+
+
+
+
 function Snapshot-GraphOwnedGroups {
   param([string]$UserId)
+
   $out = @()
+
+  # Progress helpers (initialized early to satisfy StrictMode).
+  $totalOwned = 0
+  $ownedIndex = 0
+
   $ownedGroups = $null
   try {
     $ownedGroups = Get-MgUserOwnedObject -UserId $UserId -All -ErrorAction Stop
@@ -467,17 +486,20 @@ function Snapshot-GraphOwnedGroups {
     Skip ("Failed to retrieve Graph owned objects for user {0}: {1}" -f $UserId, $_)
     return @()
   }
+
+  $totalOwned = CountOf $ownedGroups
+  if ($totalOwned -gt 0) {
+    Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ('0 of ' + $totalOwned) -PercentComplete 0
+  }
+
   foreach ($o in $ownedGroups) {
     $ownedIndex++
+
     if ($totalOwned -gt 0) {
       $pct = [int](($ownedIndex / $totalOwned) * 100)
       Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ("{0} of {1}" -f $ownedIndex, $totalOwned) -PercentComplete $pct
     }
-  $totalOwned = CountOf $ownedGroups
-  $ownedIndex = 0
-  if ($totalOwned -gt 0) {
-    Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Status ('0 of ' + $totalOwned) -PercentComplete 0
-  }
+
     try {
       $gg = Get-MgGroup -GroupId $o.Id -Property "id,displayName,groupTypes" -ErrorAction SilentlyContinue
       if ($gg) {
@@ -489,11 +511,18 @@ function Snapshot-GraphOwnedGroups {
           IsUnified   = ($gg.GroupTypes -contains 'Unified')
         }
       }
-    } catch { }
+    } catch {
+      # Keep going if one group fails to read.
+    }
   }
-  return $out
+
   try { Write-Progress -Id 4 -Activity 'Checking groups owned by the user' -Completed } catch {}
+  return $out
 }
+
+
+
+
 
 function Snapshot-EXO-DLs {
   param([string]$UserSmtp)
@@ -503,7 +532,7 @@ function Snapshot-EXO-DLs {
   # Progress helpers (initialized early to satisfy StrictMode)
   $totalDls = 0
   $dlIndex = 0
-  
+
   try { $dls = Get-DistributionGroup -ResultSize Unlimited -ErrorAction Stop } catch {
     Skip ("Unable to enumerate distribution groups in EXO: {0}" -f $_)
     return @()
